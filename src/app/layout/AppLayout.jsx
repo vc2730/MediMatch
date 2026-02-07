@@ -5,13 +5,13 @@ import { useTheme } from '../providers/ThemeProvider'
 import { useAuth } from '../providers/AuthProvider'
 
 const AppLayout = ({ children }) => {
-  const { theme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const { user, logout } = useAuth()
-  const isDark = theme === 'dark'
+  const isDark = (theme === 'system' ? resolvedTheme : theme) === 'dark'
 
   return (
     <div className="app-shell">
-      <header className="sticky top-0 z-40 border-b border-white/20 bg-white/70 backdrop-blur dark:border-ink-800/60 dark:bg-ink-950/70">
+      <header className="sticky top-0 z-40 border-b border-ink-200 bg-ink-200/90 backdrop-blur dark:border-ink-800/80 dark:bg-ink-950/90">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-center gap-4">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-700 text-white shadow-glow">
