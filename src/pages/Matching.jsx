@@ -5,6 +5,7 @@ import { Card } from '../components/ui/card'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion'
 import { usePatients } from '../hooks/usePatients'
 import { useMatching } from '../hooks/useMatching'
+import { useMatchReasoning } from '../hooks/useMatchReasoning'
 import { calculateEquityScore } from '../lib/equityEngine'
 import { Calendar, MapPin, Clock, Heart, AlertCircle } from 'lucide-react'
 
@@ -14,6 +15,9 @@ const Matching = () => {
 
   const [selectedId, setSelectedId] = useState(null)
   const [acceptedMatch, setAcceptedMatch] = useState(null)
+  const { reasoning, generate, loading: reasoningLoading, error: reasoningError } = useMatchReasoning(
+    acceptedMatch?.matchId
+  )
 
   // Auto-select first patient when loaded
   useEffect(() => {
@@ -226,6 +230,29 @@ const Matching = () => {
                   <p className="mt-3 text-xs text-green-700 dark:text-green-300">
                     Match ID: {acceptedMatch.matchId}
                   </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={generate}
+                      disabled={reasoningLoading || reasoning?.status === 'generating'}
+                    >
+                      {reasoning?.status === 'ready' ? 'Regenerate reasoning' : 'Generate reasoning'}
+                    </Button>
+                    {reasoning?.status && (
+                      <Badge variant="neutral" className="text-xs">
+                        {reasoning.status}
+                      </Badge>
+                    )}
+                  </div>
+                  {reasoning?.equityExplanation && (
+                    <p className="mt-3 text-xs text-ink-600 dark:text-ink-300">
+                      {reasoning.equityExplanation}
+                    </p>
+                  )}
+                  {reasoningError && (
+                    <p className="mt-3 text-xs text-red-600 dark:text-red-400">{reasoningError}</p>
+                  )}
                 </div>
               </div>
             </Card>

@@ -1,27 +1,123 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Activity,
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  FileText,
+  Sparkles,
+  Stethoscope,
+  UserPlus
+} from 'lucide-react'
 import { Card } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion'
 import { usePatients } from '../hooks/usePatients'
 import { useDoctorMatches } from '../hooks/useMatches'
 import { updateMatchStatus } from '../services/database'
 import { calculateEquityScore } from '../lib/equityEngine'
-import { Users, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react'
+import { mockPatients, wastedSlotsStats } from '../lib/mockData'
 
 const DoctorDashboard = () => {
-  const { patients, loading: patientsLoading, usingDemo } = usePatients()
+  const { patients, loading: patientsLoading, error: patientsError, usingDemo } = usePatients()
   const [doctorId] = useState('doctor_1') // TODO: Get from auth context
-  const { matches, loading: matchesLoading, refresh: refreshMatches } = useDoctorMatches(doctorId)
+  const { matches, loading: matchesLoading, error: matchesError, refresh: refreshMatches } = useDoctorMatches(doctorId)
 
-  // Filter patients by equity score
-  const patientsWithScores = patients.map(p => ({
-    ...p,
-    equityScore: calculateEquityScore(p)
-  })).sort((a, b) => b.equityScore - a.equityScore)
+  const [expandedAppointment, setExpandedAppointment] = useState(null)
+  const [expandedQueuePatient, setExpandedQueuePatient] = useState(null)
 
-  const pendingMatches = matches.filter(m => m.status === 'pending')
-  const confirmedMatches = matches.filter(m => m.status === 'confirmed')
+  const queueSource = useMemo(() => {
+    if (!usingDemo && patients.length > 0) return patients
+    return mockPatients
+  }, [patients, usingDemo])
+
+  const normalizePatient = (patient, fallbackId) => {
+    const waitTimeDays = Number(patient.waitTimeDays ?? patient.waitDays ?? 0)
+    const urgencyLevel = Number(patient.urgencyLevel ?? patient.aiUrgencyScore ?? 5)
+    return {
+      id: patient.id || patient.uid || patient.email || `temp-${fallbackId}`,
+      name: patient.fullName || patient.name || 'Unknown',
+      condition: patient.medicalCondition || patient.condition || 'Condition pending',
+      specialty: patient.specialty || patient.specialtyName || 'General',
+      waitTimeDays,
+      urgencyLevel,
+      insurance: patient.insurance || 'Uninsured',
+      transportation: patient.transportation || 'Not available yet',
+      travelConstraints: patient.travelConstraints || patient.transportation || 'Not available yet',
+      symptoms: patient.symptoms || 'Not available yet',
+      aiRecommendations: patient.aiRecommendations || []
+    }
+  }
+
+  const patientsWithScores = useMemo(() => {
+    return queueSource
+      .map((patient, index) => {
+        const normalized = normalizePatient(patient, index)
+        return {
+          ...normalized,
+          equityScore: calculateEquityScore(normalized)
+        }
+      })
+      .sort((a, b) => b.equityScore - a.equityScore)
+  }, [queueSource])
+
+  const topPatients = patientsWithScores.slice(0, 3)
+
+  const pendingMatches = matches.filter((match) => match.status === 'pending')
+  const confirmedMatches = matches.filter((match) => match.status === 'confirmed')
+
+  const actionItems = pendingMatches.map((match) => {
+    const patient = patients.find((p) => p.id === match.patientId)
+    return {
+      id: match.id,
+      type: 'urgent',
+      description: `Review match for ${patient?.fullName || patient?.name || 'patient'}`,
+      dueTime: match.matchedAt ? 'Today' : 'Not available yet'
+    }
+  })
+
+  const appointments = confirmedMatches.map((match) => {
+    const patient = patients.find((p) => p.id === match.patientId)
+    const symptoms = patient?.symptoms
+      ? Array.isArray(patient.symptoms)
+        ? patient.symptoms
+        : String(patient.symptoms).split(',').map((item) => item.trim()).filter(Boolean)
+      : ['Not available yet']
+    const aiRecommendations = match.reasoningExplanation
+      ? [match.reasoningExplanation]
+      : ['Not available yet']
+
+    return {
+      id: match.id,
+      time: match.appointmentTime || match.time || '—',
+      patientName: patient?.fullName || patient?.name || 'Unknown',
+      condition: patient?.medicalCondition || patient?.condition || 'Condition pending',
+      status: match.status || 'scheduled',
+      symptoms,
+      aiRecommendations
+    }
+  })
+
+  const urgentActionItems = actionItems.filter((item) => item.type === 'urgent')
+
+  const stats = {
+    urgentItems: urgentActionItems.length,
+    highPriority: topPatients.length,
+    appointments: appointments.length,
+    avgWaitReduced: wastedSlotsStats.averageWaitTime
+  }
+
+  const toggleAppointmentDetails = (appointmentId) => {
+    setExpandedAppointment(expandedAppointment === appointmentId ? null : appointmentId)
+  }
+
+  const toggleQueuePatientDetails = (patientId) => {
+    setExpandedQueuePatient(expandedQueuePatient === patientId ? null : patientId)
+  }
 
   const handleConfirmMatch = async (matchId) => {
     try {
@@ -43,259 +139,348 @@ const DoctorDashboard = () => {
     }
   }
 
-  const getUrgencyColor = (urgency) => {
-    if (urgency >= 8) return 'text-red-600 dark:text-red-400'
-    if (urgency >= 6) return 'text-orange-600 dark:text-orange-400'
-    if (urgency >= 4) return 'text-yellow-600 dark:text-yellow-400'
-    return 'text-green-600 dark:text-green-400'
-  }
-
-  if (patientsLoading) {
+  if (patientsLoading || matchesLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto"></div>
-          <p className="mt-4 text-sm text-ink-500 dark:text-ink-300">Loading dashboard...</p>
+      <div className="space-y-6">
+        <div className="h-8 w-56 rounded-lg bg-ink-200/60 animate-pulse dark:bg-ink-800/60" />
+        <div className="h-40 rounded-2xl bg-white/70 animate-pulse dark:bg-ink-900/60" />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="h-48 rounded-2xl bg-white/70 animate-pulse dark:bg-ink-900/60" />
+          <div className="h-48 rounded-2xl bg-white/70 animate-pulse dark:bg-ink-900/60" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900 dark:text-white">Doctor Dashboard</h1>
-        <p className="text-ink-500 dark:text-ink-300 mt-1">
-          Manage patient matches and view waiting patients
-        </p>
-      </div>
+    <div className="relative -mx-6 -my-8 px-6 py-8">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-ink-950 dark:via-ink-900 dark:to-slate-900" />
 
-      {usingDemo && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>Demo Mode:</strong> Using hardcoded demo data.
-              <a href="/seed-demo-data.html" className="ml-2 underline hover:no-underline">
-                Seed Real Data
-              </a>
-            </p>
+      <div className="space-y-8">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg">
+            <Stethoscope className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-ink-400 dark:text-ink-500">Doctor Portal</p>
+            <h1 className="text-2xl font-semibold text-ink-900 dark:text-white">CareFlow Exchange</h1>
           </div>
         </div>
-      )}
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-brand-100 p-2 dark:bg-brand-900/30">
-              <Users className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+        {(patientsError || matchesError) && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+            {patientsError || matchesError}
+          </div>
+        )}
+
+        <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-white shadow-xl">
+          <h2 className="text-3xl font-bold">Hi Doctor, welcome back.</h2>
+          <p className="mt-2 text-sm text-white/80">Here’s your real-time CareFlow Exchange pulse.</p>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/20">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{stats.urgentItems}</div>
+                <div className="text-sm opacity-90">Urgent Action Items</div>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-ink-500 dark:text-ink-400">Waiting Patients</p>
-              <p className="text-2xl font-bold text-ink-900 dark:text-white">{patients.length}</p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/20">
+                <UserPlus className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{stats.highPriority}</div>
+                <div className="text-sm opacity-90">High Priority Patients</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/20">
+                <Calendar className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{stats.appointments}</div>
+                <div className="text-sm opacity-90">Appointments Today</div>
+              </div>
             </div>
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-orange-100 p-2 dark:bg-orange-900/30">
-              <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <Card className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-orange-500" />
+                <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Action Items</h2>
+              </div>
+              <Badge variant="warning">{actionItems.length}</Badge>
             </div>
-            <div>
-              <p className="text-xs text-ink-500 dark:text-ink-400">Pending Matches</p>
-              <p className="text-2xl font-bold text-ink-900 dark:text-white">{pendingMatches.length}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <p className="text-xs text-ink-500 dark:text-ink-400">Confirmed</p>
-              <p className="text-2xl font-bold text-ink-900 dark:text-white">{confirmedMatches.length}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-red-100 p-2 dark:bg-red-900/30">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-            </div>
-            <div>
-              <p className="text-xs text-ink-500 dark:text-ink-400">High Urgency</p>
-              <p className="text-2xl font-bold text-ink-900 dark:text-white">
-                {patients.filter(p => (p.urgencyLevel || p.aiUrgencyScore || 0) >= 7).length}
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Pending Match Requests */}
-      {pendingMatches.length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold text-ink-900 dark:text-white mb-4">
-            Pending Match Requests ({pendingMatches.length})
-          </h2>
-          <p className="text-sm text-ink-500 dark:text-ink-300 mb-4">
-            Review and confirm or reject patient matches for your appointments.
-          </p>
-
-          <div className="space-y-3">
-            {pendingMatches.map(match => {
-              const patient = patients.find(p => p.id === match.patientId)
-              if (!patient) return null
-
-              return (
-                <div key={match.id} className="border border-ink-200 dark:border-ink-700 rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h4 className="font-semibold text-ink-900 dark:text-white">
-                          {patient.fullName}
-                        </h4>
-                        <Badge variant="warning">
-                          Priority Tier {match.priorityTier}
-                        </Badge>
-                        <span className={`text-sm font-semibold ${getUrgencyColor(match.urgencyScore)}`}>
-                          Urgency: {match.urgencyScore}/10
-                        </span>
-                      </div>
-
-                      <div className="mt-2 text-sm text-ink-600 dark:text-ink-300">
-                        <p><strong>Condition:</strong> {patient.medicalCondition}</p>
-                        <p><strong>Specialty:</strong> {patient.specialty}</p>
-                        <p><strong>Insurance:</strong> {patient.insurance}</p>
-                        <p><strong>Wait Time:</strong> {patient.waitTimeDays} days</p>
-                      </div>
-
-                      <div className="mt-3 text-xs text-ink-500 dark:text-ink-400">
-                        <p><strong>Match Score:</strong> {match.totalMatchScore}/100</p>
-                        <p className="italic">{match.reasoningExplanation}</p>
+            {actionItems.length === 0 ? (
+              <div className="mt-6 rounded-xl border border-dashed border-ink-200 bg-white/70 px-4 py-6 text-center text-sm text-ink-500 dark:border-ink-800 dark:bg-ink-900/60 dark:text-ink-300">
+                No urgent action items right now.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {actionItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex flex-col gap-3 rounded-xl border border-ink-200 bg-white/80 p-4 dark:border-ink-800 dark:bg-ink-900/60 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      <div>
+                        <p className="text-sm font-medium text-ink-900 dark:text-white">{item.description}</p>
+                        <p className="text-xs text-ink-500 dark:text-ink-400">Due: {item.dueTime}</p>
                       </div>
                     </div>
-
-                    <div className="flex gap-2 ml-4">
-                      <Button
-                        size="sm"
-                        onClick={() => handleConfirmMatch(match.id)}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleConfirmMatch(item.id)}>
                         Confirm
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleRejectMatch(match.id)}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" />
+                      <Button size="sm" variant="outline" onClick={() => handleRejectMatch(item.id)}>
                         Reject
                       </Button>
                     </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </Card>
-      )}
+                ))}
+              </div>
+            )}
+          </Card>
 
-      {/* Waiting Patients List */}
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold text-ink-900 dark:text-white mb-4">
-          Waiting Patients ({patients.length})
-        </h2>
-        <p className="text-sm text-ink-500 dark:text-ink-300 mb-4">
-          Patients waiting for appointments, sorted by equity priority score.
-        </p>
+          <Card className="p-6">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-5 w-5 text-blue-600" />
+              <h2 className="text-xl font-semibold text-ink-900 dark:text-white">CareFlow Stats</h2>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <div className="flex items-center justify-between rounded-lg bg-ink-50 px-4 py-3 text-sm dark:bg-ink-900/60">
+                <span className="text-ink-500 dark:text-ink-300">Slots Rescued (30d)</span>
+                <span className="font-semibold text-ink-900 dark:text-white">{wastedSlotsStats.totalWastedLastMonth}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-ink-50 px-4 py-3 text-sm dark:bg-ink-900/60">
+                <span className="text-ink-500 dark:text-ink-300">Patients Matched</span>
+                <span className="font-semibold text-ink-900 dark:text-white">{wastedSlotsStats.patientsRouted}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-ink-50 px-4 py-3 text-sm dark:bg-ink-900/60">
+                <span className="text-ink-500 dark:text-ink-300">Avg Wait Reduced</span>
+                <span className="font-semibold text-ink-900 dark:text-white">{stats.avgWaitReduced}</span>
+              </div>
+            </div>
+            <Button asChild className="mt-4 w-full">
+              <Link to="/matching">
+                Review Live Matching
+                <Sparkles className="h-4 w-4" />
+              </Link>
+            </Button>
+          </Card>
+        </section>
 
-        {patients.length === 0 ? (
-          <div className="text-center py-8">
-            <Users className="h-12 w-12 text-ink-300 mx-auto mb-3" />
-            <p className="text-ink-500 dark:text-ink-400">No patients waiting currently.</p>
+        <Card className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Today's Schedule</h2>
           </div>
-        ) : (
-          <div className="space-y-2 max-h-[500px] overflow-y-auto">
-            {patientsWithScores.map(patient => (
-              <Accordion key={patient.id} type="single" collapsible>
-                <AccordionItem value="details" className="border rounded-lg px-4">
-                  <AccordionTrigger className="hover:no-underline">
-                    <div className="flex items-center justify-between w-full pr-4">
-                      <div className="flex items-center gap-3">
-                        <div className="text-left">
-                          <p className="font-semibold text-ink-900 dark:text-white">
-                            {patient.fullName}
-                          </p>
-                          <p className="text-xs text-ink-500 dark:text-ink-400">
-                            {patient.specialty} · {patient.insurance}
-                          </p>
+          <div className="space-y-3">
+            {appointments.length === 0 ? (
+              <div className="text-center py-10 text-ink-500 dark:text-ink-300">
+                <Clock className="h-10 w-10 mx-auto mb-3 text-ink-400" />
+                No confirmed appointments yet.
+              </div>
+            ) : (
+              appointments.map((appointment) => {
+                const isExpanded = expandedAppointment === appointment.id
+                return (
+                  <div
+                    key={appointment.id}
+                    className="border border-ink-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow dark:border-ink-800"
+                  >
+                    <button
+                      onClick={() => toggleAppointmentDetails(appointment.id)}
+                      className="w-full p-4 bg-ink-50 flex items-center justify-between hover:bg-ink-100 transition-colors dark:bg-ink-900/60 dark:hover:bg-ink-900"
+                    >
+                      <div className="flex items-center gap-4 flex-1 text-left">
+                        <div className="flex items-center gap-2 min-w-[100px]">
+                          <Clock className="w-4 h-4 text-blue-600" />
+                          <span className="font-bold text-ink-900 dark:text-white">{appointment.time}</span>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <Badge variant="warning">
-                          Equity: {patient.equityScore}
-                        </Badge>
-                        <span className={`text-sm font-semibold ${getUrgencyColor(patient.urgencyLevel || patient.aiUrgencyScore || 5)}`}>
-                          {patient.urgencyLevel || patient.aiUrgencyScore || 5}/10
+                        <div className="flex-1">
+                          <p className="font-bold text-ink-900 dark:text-white">{appointment.patientName}</p>
+                          <p className="text-sm text-ink-500 dark:text-ink-300">{appointment.condition}</p>
+                        </div>
+                        <span className="px-3 py-1 rounded-full text-xs bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-200">
+                          {appointment.status}
                         </span>
                       </div>
-                    </div>
-                  </AccordionTrigger>
+                      {isExpanded ? (
+                        <ChevronUp className="w-5 h-5 text-ink-400 ml-4" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5 text-ink-400 ml-4" />
+                      )}
+                    </button>
 
-                  <AccordionContent>
-                    <div className="grid grid-cols-2 gap-4 text-sm pt-3 pb-2">
-                      <div>
-                        <p className="text-ink-500 dark:text-ink-400">Condition</p>
-                        <p className="font-medium text-ink-900 dark:text-white">
-                          {patient.medicalCondition}
-                        </p>
+                    {isExpanded && (
+                      <div className="p-6 bg-white border-t border-ink-200 dark:bg-ink-950/60 dark:border-ink-800">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <h3 className="font-bold mb-3 flex items-center gap-2 text-ink-900 dark:text-white">
+                              <Activity className="w-5 h-5 text-purple-600" />
+                              Reported Symptoms
+                            </h3>
+                            <ul className="space-y-2">
+                              {appointment.symptoms.map((symptom, idx) => (
+                                <li key={idx} className="flex items-start gap-2 text-sm text-ink-600 dark:text-ink-300">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
+                                  <span>{symptom}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div>
+                            <h3 className="font-bold mb-3 flex items-center gap-2 text-ink-900 dark:text-white">
+                              <FileText className="w-5 h-5 text-blue-600" />
+                              AI-Recommended Action Items
+                            </h3>
+                            <ul className="space-y-2">
+                              {appointment.aiRecommendations.map((rec, idx) => (
+                                <li key={idx} className="flex items-start gap-2 text-sm text-ink-600 dark:text-ink-300">
+                                  <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span>{rec}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-ink-500 dark:text-ink-400">Symptoms</p>
-                        <p className="font-medium text-ink-900 dark:text-white">
-                          {patient.symptoms}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-ink-500 dark:text-ink-400">Wait Time</p>
-                        <p className="font-medium text-ink-900 dark:text-white">
-                          {patient.waitTimeDays} days
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-ink-500 dark:text-ink-400">Transportation</p>
-                        <p className="font-medium text-ink-900 dark:text-white">
-                          {patient.transportation}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-ink-500 dark:text-ink-400">Insurance</p>
-                        <p className="font-medium text-ink-900 dark:text-white">
-                          {patient.insurance}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-ink-500 dark:text-ink-400">Zip Code</p>
-                        <p className="font-medium text-ink-900 dark:text-white">
-                          {patient.zipCode}
-                        </p>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <AlertCircle className="w-5 h-5 text-red-600" />
+            <h2 className="text-xl font-semibold text-ink-900 dark:text-white">High Priority Queue</h2>
+            <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm dark:bg-red-500/20 dark:text-red-200">
+              {topPatients.length} patients waiting
+            </span>
+          </div>
+
+          {topPatients.length === 0 ? (
+            <div className="text-center py-12 text-ink-500 dark:text-ink-300">
+              <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-500" />
+              <p className="font-medium">All caught up!</p>
+              <p className="text-sm mt-1">No patients in the high priority queue.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {topPatients.map((patient) => {
+                const isExpanded = expandedQueuePatient === patient.id
+                return (
+                  <div
+                    key={patient.id}
+                    className="border border-ink-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow dark:border-ink-800"
+                  >
+                    <div className="p-4 bg-ink-50 dark:bg-ink-900/60">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-bold text-lg text-ink-900 dark:text-white">{patient.name}</h3>
+                            <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full dark:bg-red-500/20 dark:text-red-200">
+                              Equity Score: {patient.equityScore}
+                            </span>
+                          </div>
+                          <p className="text-sm text-ink-500 dark:text-ink-300 mb-2">
+                            {patient.condition} • Waiting {patient.waitTimeDays} days
+                          </p>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded dark:bg-blue-500/20 dark:text-blue-200">
+                              {patient.specialty}
+                            </span>
+                            <span className="px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded dark:bg-purple-500/20 dark:text-purple-200">
+                              {patient.insurance}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-ink-600 dark:text-ink-300">
+                            <Clock className="w-4 h-4" />
+                            <span>Travel constraints: {patient.travelConstraints}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => toggleQueuePatientDetails(patient.id)}
+                          className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                        >
+                          {isExpanded ? 'Hide Details' : 'View Details'}
+                        </button>
                       </div>
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            ))}
-          </div>
-        )}
-      </Card>
+
+                    {isExpanded && (
+                      <div className="p-6 bg-white border-t border-ink-200 dark:bg-ink-950/60 dark:border-ink-800">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                          <div>
+                            <h4 className="font-bold mb-3 flex items-center gap-2 text-ink-900 dark:text-white">
+                              <Activity className="w-5 h-5 text-purple-600" />
+                              Symptoms
+                            </h4>
+                            <ul className="space-y-2">
+                              {String(patient.symptoms)
+                                .split(',')
+                                .map((symptom) => symptom.trim())
+                                .filter(Boolean)
+                                .map((symptom) => (
+                                  <li key={symptom} className="flex items-start gap-2 text-sm text-ink-600 dark:text-ink-300">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
+                                    <span>{symptom}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+
+                          <div>
+                            <h4 className="font-bold mb-3 flex items-center gap-2 text-ink-900 dark:text-white">
+                              <FileText className="w-5 h-5 text-blue-600" />
+                              AI Recommendations
+                            </h4>
+                            <ul className="space-y-2">
+                              {patient.aiRecommendations.length > 0 ? (
+                                patient.aiRecommendations.map((rec) => (
+                                  <li key={rec} className="flex items-start gap-2 text-sm text-ink-600 dark:text-ink-300">
+                                    <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                    <span>{rec}</span>
+                                  </li>
+                                ))
+                              ) : (
+                                <li className="text-sm text-ink-500 dark:text-ink-300">Not available yet</li>
+                              )}
+                            </ul>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-ink-200 pt-4 dark:border-ink-800">
+                          <p className="font-medium mb-3 text-ink-900 dark:text-white">Accept Patient for:</p>
+                          <div className="flex gap-3 flex-wrap">
+                            <Button size="sm" asChild>
+                              <Link to="/matching">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Find Match
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   )
 }

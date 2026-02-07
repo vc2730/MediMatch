@@ -140,7 +140,18 @@ Track patient-appointment matches with equity scoring
   completedAt: timestamp | null,
 
   // AI Reasoning
-  reasoningExplanation: string, // From K2 Think / Gemini
+  reasoningExplanation: string, // From K2 Think / Gemini (legacy)
+  reasoning: {
+    status: "idle" | "generating" | "ready" | "error",
+    patientSummary: string,
+    doctorSummary: string,
+    equityExplanation: string,
+    warnings: string[],
+    provider: string,
+    model: string,
+    generatedAt: timestamp,
+    errorMessage?: string
+  },
   priorityTier: number, // 1-4 (1 = highest priority)
 
   // Workflow Integration
