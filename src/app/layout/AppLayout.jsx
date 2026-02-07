@@ -14,35 +14,43 @@ const AppLayout = ({ children }) => {
       <header className="sticky top-0 z-40 border-b border-ink-200 bg-ink-200/90 backdrop-blur dark:border-ink-800/80 dark:bg-ink-950/90">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-700 text-white shadow-glow">
-              <Zap className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-ink-900 dark:text-white">CareFlow Exchange</p>
-              <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">
-                MediMatch Intelligence
-              </p>
-            </div>
+            <Link to={user?.role === 'patient' ? '/patient' : '/'} className="flex items-center gap-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand-500 to-brand-700 text-white shadow-glow">
+                <Zap className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-ink-900 dark:text-white">CareFlow Exchange</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">
+                  MediMatch Intelligence
+                </p>
+              </div>
+            </Link>
           </div>
 
           <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
             {user?.role === 'doctor' && (
               <nav className="hidden items-center gap-4 text-sm font-medium text-ink-600 dark:text-ink-200 md:flex">
-                <NavLink to="/intake" className={({ isActive }) => (isActive ? 'text-brand-600' : '')}>
+                <NavLink to="/" end className={({ isActive }) => (isActive ? 'text-brand-600' : 'hover:text-brand-600')}>
+                  Dashboard
+                </NavLink>
+                <NavLink to="/intake" className={({ isActive }) => (isActive ? 'text-brand-600' : 'hover:text-brand-600')}>
                   Intake
                 </NavLink>
-                <NavLink to="/matching" className={({ isActive }) => (isActive ? 'text-brand-600' : '')}>
+                <NavLink to="/matching" className={({ isActive }) => (isActive ? 'text-brand-600' : 'hover:text-brand-600')}>
                   Matching
                 </NavLink>
-                <NavLink to="/flowglad" className={({ isActive }) => (isActive ? 'text-brand-600' : '')}>
+                <NavLink to="/flowglad" className={({ isActive }) => (isActive ? 'text-brand-600' : 'hover:text-brand-600')}>
                   FlowGlad
+                </NavLink>
+                <NavLink to="/slots" className={({ isActive }) => (isActive ? 'text-brand-600' : 'hover:text-brand-600')}>
+                  Slots
                 </NavLink>
               </nav>
             )}
 
             {user?.role === 'patient' && (
               <nav className="hidden items-center gap-4 text-sm font-medium text-ink-600 dark:text-ink-200 md:flex">
-                <NavLink to="/patient" className={({ isActive }) => (isActive ? 'text-brand-600' : '')}>
+                <NavLink to="/patient" className={({ isActive }) => (isActive ? 'text-brand-600' : 'hover:text-brand-600')}>
                   Patient Portal
                 </NavLink>
               </nav>
@@ -51,6 +59,12 @@ const AppLayout = ({ children }) => {
             {user?.role === 'doctor' && (
               <Button asChild className="hidden sm:inline-flex">
                 <Link to="/intake">New Patient Intake</Link>
+              </Button>
+            )}
+
+            {!user && (
+              <Button asChild variant="outline" size="sm">
+                <Link to="/login">Log in</Link>
               </Button>
             )}
 

@@ -33,10 +33,12 @@ const Login = () => {
     }
   }, [user, navigate])
 
-  useEffect(() => {
-    if (email === doctorDemo.email) setRole('doctor')
-    if (email === patientDemo.email) setRole('patient')
-  }, [email])
+  const handleEmailChange = (event) => {
+    const nextEmail = event.target.value
+    setEmail(nextEmail)
+    if (nextEmail === doctorDemo.email) setRole('doctor')
+    if (nextEmail === patientDemo.email) setRole('patient')
+  }
 
   const handleSubmit = (event) => {
     event.preventDefault()
@@ -81,7 +83,7 @@ const Login = () => {
                 id="email"
                 name="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={handleEmailChange}
                 placeholder="you@demo.com"
                 type="email"
                 required

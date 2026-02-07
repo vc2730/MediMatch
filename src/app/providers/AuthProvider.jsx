@@ -1,20 +1,21 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useMemo, useState } from 'react'
 
 const AuthContext = createContext({ user: null, login: () => {}, logout: () => {} })
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null)
+const getStoredUser = () => {
+  const stored = localStorage.getItem('auth')
+  if (!stored) return null
+  try {
+    return JSON.parse(stored)
+  } catch {
+    localStorage.removeItem('auth')
+    return null
+  }
+}
 
-  useEffect(() => {
-    const stored = localStorage.getItem('auth')
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored))
-      } catch {
-        localStorage.removeItem('auth')
-      }
-    }
-  }, [])
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(getStoredUser)
 
   const login = (role, email) => {
     const nextUser = { role, email }

@@ -20,7 +20,6 @@ function useDropdownMenu() {
 const DropdownMenuTrigger = React.forwardRef(({ asChild = false, children, ...props }, ref) => {
   const { open, setOpen } = useDropdownMenu()
   const triggerProps = {
-    ref,
     onClick: (event) => {
       children.props?.onClick?.(event)
       setOpen(!open)
@@ -33,7 +32,7 @@ const DropdownMenuTrigger = React.forwardRef(({ asChild = false, children, ...pr
   }
 
   return (
-    <button type="button" {...triggerProps}>
+    <button type="button" ref={ref} {...triggerProps}>
       {children}
     </button>
   )

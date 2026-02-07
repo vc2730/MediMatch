@@ -7,7 +7,7 @@ const ProtectedRoute = ({ allowedRole, children }) => {
   const location = useLocation()
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    return <Navigate to="/landing" replace state={{ from: location.pathname }} />
   }
 
   if (allowedRole && user.role !== allowedRole) {

@@ -7,12 +7,15 @@ import Matching from './pages/Matching'
 import Flowglad from './pages/Flowglad'
 import PatientPortal from './pages/PatientPortal'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
+import Slots from './pages/Slots'
 
 function App() {
   return (
     <BrowserRouter>
       <AppLayout>
         <Routes>
+          <Route path="/landing" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route
             path="/"
@@ -43,6 +46,14 @@ function App() {
             element={
               <ProtectedRoute allowedRole="doctor">
                 <Flowglad />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/slots"
+            element={
+              <ProtectedRoute allowedRole="doctor">
+                <Slots />
               </ProtectedRoute>
             }
           />

@@ -9,14 +9,15 @@ import {
 import StatCard from '../components/StatCard'
 import QuickActionCard from '../components/QuickActionCard'
 import PatientQueueItem from '../components/PatientQueueItem'
+import KpiCard from '../components/KpiCard'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
-import { mockPatients, wastedSlotsStats } from '../lib/mockData'
+import { operationsKpis, priorityPatients, recentActivity, wastedSlotsStats } from '../lib/demoData'
 import { calculateEquityScore } from '../lib/equityEngine'
 
 const Dashboard = () => {
-  const topPatients = [...mockPatients]
+  const topPatients = [...priorityPatients]
     .map((patient) => ({ ...patient, score: calculateEquityScore(patient) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
@@ -107,10 +108,10 @@ const Dashboard = () => {
               icon={Workflow}
             />
             <QuickActionCard
-              title="Patient Portal"
-              description="Deliver updates and voice reminders."
-              to="/patient"
-              icon={UserRound}
+              title="Slots Management"
+              description="Track open capacity and fill priority slots."
+              to="/slots"
+              icon={ListChecks}
             />
           </div>
         </div>
@@ -125,6 +126,35 @@ const Dashboard = () => {
           <div className="mt-4 space-y-4">
             {topPatients.map((patient) => (
               <PatientQueueItem key={patient.id} patient={patient} score={patient.score} />
+            ))}
+          </div>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Today’s Operations</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            {operationsKpis.map((kpi) => (
+              <KpiCard key={kpi.id} label={kpi.label} value={kpi.value} trend={kpi.trend} />
+            ))}
+          </div>
+        </div>
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">Recent activity</p>
+              <h3 className="mt-2 text-lg font-semibold text-ink-900 dark:text-white">Operational feed</h3>
+            </div>
+            <Badge variant="neutral">Live</Badge>
+          </div>
+          <div className="mt-4 space-y-4">
+            {recentActivity.map((item) => (
+              <div key={item.id} className="rounded-xl border border-ink-200/70 bg-white/70 p-4 dark:border-ink-800/70 dark:bg-ink-900/60">
+                <p className="text-sm font-semibold text-ink-900 dark:text-white">{item.title}</p>
+                <p className="mt-1 text-xs text-ink-500 dark:text-ink-300">{item.description}</p>
+                <p className="mt-2 text-xs text-ink-400 dark:text-ink-500">{item.time}</p>
+              </div>
             ))}
           </div>
         </Card>

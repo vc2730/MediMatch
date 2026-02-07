@@ -24,7 +24,7 @@ function useAccordion() {
   return context
 }
 
-const AccordionItem = ({ value, className, children }) => {
+const AccordionItem = ({ className, children }) => {
   return <div className={cn('rounded-xl border border-ink-200/80 dark:border-ink-800/80', className)}>{children}</div>
 }
 

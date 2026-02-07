@@ -1,34 +1,29 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
-const ThemeContext = createContext({ theme: 'system', setTheme: () => {} })
+const ThemeContext = createContext({ theme: 'system', setTheme: () => {}, resolvedTheme: 'light' })
 
 const getSystemTheme = () => {
   if (typeof window === 'undefined') return 'light'
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+const getStoredTheme = () => {
+  if (typeof window === 'undefined') return 'system'
+  return localStorage.getItem('theme') || 'system'
+}
+
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState(() => {
-    if (typeof window === 'undefined') return 'system'
-    return localStorage.getItem('theme') || 'system'
-  })
-  const [resolvedTheme, setResolvedTheme] = useState(() =>
-    theme === 'system' ? getSystemTheme() : theme
-  )
+  const [theme, setTheme] = useState(getStoredTheme)
+  const [systemTheme, setSystemTheme] = useState(getSystemTheme)
 
   useEffect(() => {
     localStorage.setItem('theme', theme)
   }, [theme])
 
   useEffect(() => {
-    if (theme !== 'system') {
-      setResolvedTheme(theme)
-      return
-    }
-
     const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const updateTheme = () => setResolvedTheme(media.matches ? 'dark' : 'light')
-    updateTheme()
+    const updateTheme = () => setSystemTheme(media.matches ? 'dark' : 'light')
 
     if (media.addEventListener) {
       media.addEventListener('change', updateTheme)
@@ -37,7 +32,9 @@ export const ThemeProvider = ({ children }) => {
 
     media.addListener(updateTheme)
     return () => media.removeListener(updateTheme)
-  }, [theme])
+  }, [])
+
+  const resolvedTheme = theme === 'system' ? systemTheme : theme
 
   useEffect(() => {
     const root = document.documentElement
