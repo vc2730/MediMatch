@@ -22,6 +22,7 @@ const Matching = () => {
   // Auto-select first patient when loaded
   useEffect(() => {
     if (patients.length > 0 && !selectedId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedId(patients[0].id)
     }
   }, [patients, selectedId])

@@ -2,12 +2,15 @@
  * React Hook for Patient/Doctor Matches
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import {
   getPatientMatches,
   getDoctorMatches,
   subscribeToPatientMatches,
-  updateMatchStatus
+  updateMatchStatus,
+  subscribeToDoctorAppointments
 } from '../services/database';
 
 /**
@@ -82,28 +85,74 @@ export const useDoctorMatches = (doctorId) => {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const batchMapsRef = useRef({});
+  const matchUnsubsRef = useRef([]);
 
   useEffect(() => {
     if (!doctorId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
 
-    const loadMatches = async () => {
-      try {
-        setLoading(true);
-        const data = await getDoctorMatches(doctorId);
-        setMatches(data);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading doctor matches:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
+    setLoading(true);
+
+    const clearMatchListeners = () => {
+      matchUnsubsRef.current.forEach((unsub) => unsub());
+      matchUnsubsRef.current = [];
+      batchMapsRef.current = {};
     };
 
-    loadMatches();
+    const unsubscribeAppointments = subscribeToDoctorAppointments(doctorId, (appointments) => {
+      clearMatchListeners();
+
+      const appointmentIds = appointments.map((apt) => apt.id);
+      if (appointmentIds.length === 0) {
+        setMatches([]);
+        setLoading(false);
+        return;
+      }
+
+      const batches = [];
+      for (let i = 0; i < appointmentIds.length; i += 10) {
+        batches.push(appointmentIds.slice(i, i + 10));
+      }
+
+      batches.forEach((batch, index) => {
+        const q = query(
+          collection(db, 'matches'),
+          where('appointmentId', 'in', batch),
+          orderBy('matchedAt', 'desc')
+        );
+
+        const unsub = onSnapshot(
+          q,
+          (snapshot) => {
+            batchMapsRef.current[index] = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            const merged = Object.values(batchMapsRef.current).flat();
+            merged.sort((a, b) => {
+              if (!a.matchedAt || !b.matchedAt) return 0;
+              return b.matchedAt.seconds - a.matchedAt.seconds;
+            });
+            setMatches(merged);
+            setLoading(false);
+            setError(null);
+          },
+          (err) => {
+            console.error('Error in doctor matches subscription:', err);
+            setError(err.message);
+            setLoading(false);
+          }
+        );
+
+        matchUnsubsRef.current.push(unsub);
+      });
+    });
+
+    return () => {
+      unsubscribeAppointments();
+      clearMatchListeners();
+    };
   }, [doctorId]);
 
   const refresh = async () => {

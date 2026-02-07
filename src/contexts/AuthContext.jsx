@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react'
 import { onAuthChange, getUserProfile as getProfile, signOutUser } from '../services/auth'
 
@@ -51,7 +52,7 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe()
   }, [])
 
-  const login = (uid, role, profile) => {
+  const login = (uid, role) => {
     // This is called after successful authentication
     // The onAuthChange listener will handle setting the state
     if (role === 'patient') {

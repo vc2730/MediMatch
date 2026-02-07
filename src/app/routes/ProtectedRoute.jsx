@@ -1,17 +1,21 @@
 import React from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../providers/AuthProvider'
+import { useAuth } from '../../contexts/AuthContext'
 
 const ProtectedRoute = ({ allowedRole, children }) => {
-  const { user } = useAuth()
+  const { user, userRole, loading } = useAuth()
   const location = useLocation()
 
-  if (!user) {
-    return <Navigate to="/landing" replace state={{ from: location.pathname }} />
+  if (loading) {
+    return null
   }
 
-  if (allowedRole && user.role !== allowedRole) {
-    return <Navigate to={user.role === 'patient' ? '/patient' : '/'} replace />
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  if (allowedRole && userRole !== allowedRole) {
+    return <Navigate to={userRole === 'patient' ? '/patient/dashboard' : '/doctor/dashboard'} replace />
   }
 
   return children

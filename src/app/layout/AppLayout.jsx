@@ -20,7 +20,7 @@ const themeOptions = [
 const AppLayout = () => {
   const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
-  const { user, userProfile, logout, isAuthenticated } = useAuth()
+  const { user, userProfile, logout, isAuthenticated, isDoctor, isPatient } = useAuth()
   const activeOption = themeOptions.find((option) => option.value === theme) || themeOptions[2]
   const ActiveIcon = activeOption.icon
 
@@ -45,9 +45,14 @@ const AppLayout = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {isAuthenticated && (
+            {isAuthenticated && isDoctor && (
               <Button asChild className="hidden sm:inline-flex">
                 <Link to="/patient/intake">New Patient Intake</Link>
+              </Button>
+            )}
+            {isAuthenticated && isPatient && (
+              <Button asChild className="hidden sm:inline-flex">
+                <Link to="/patient/matching">Find Appointments</Link>
               </Button>
             )}
 

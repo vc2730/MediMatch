@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import AppLayout from './app/layout/AppLayout'
+import ProtectedRoute from './app/routes/ProtectedRoute'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import SignupPatient from './pages/SignupPatient'
@@ -21,23 +22,48 @@ function App() {
           {/* Public Routes - No Layout */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Home />} />
           <Route path="/signup/patient" element={<SignupPatient />} />
           <Route path="/signup/doctor" element={<SignupDoctor />} />
 
           {/* Patient Routes - With Layout */}
-          <Route path="/patient" element={<AppLayout />}>
+          <Route
+            path="/patient"
+            element={
+              <ProtectedRoute allowedRole="patient">
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route path="intake" element={<Intake />} />
             <Route path="matching" element={<PatientMatching />} />
             <Route path="portal" element={<PatientPortal />} />
+            <Route path="dashboard" element={<PatientPortal />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 
           {/* Doctor Routes - With Layout */}
-          <Route path="/doctor" element={<AppLayout />}>
+          <Route
+            path="/doctor"
+            element={
+              <ProtectedRoute allowedRole="doctor">
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route path="dashboard" element={<DoctorDashboard />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
           </Route>
 
           {/* Legacy/Admin Routes - With Layout */}
-          <Route path="/" element={<AppLayout />}>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute allowedRole="doctor">
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="intake" element={<Intake />} />
             <Route path="matching" element={<Matching />} />

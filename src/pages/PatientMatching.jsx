@@ -6,12 +6,14 @@ import { Card } from '../components/ui/card'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion'
 import { usePatient } from '../hooks/usePatients'
 import { useMatching } from '../hooks/useMatching'
+import { useAuth } from '../contexts/AuthContext'
 import { calculateEquityScore } from '../lib/equityEngine'
 import { Calendar, MapPin, Clock, Heart, AlertCircle, ArrowLeft } from 'lucide-react'
 
 const PatientMatching = () => {
   const navigate = useNavigate()
   const [patientId, setPatientId] = useState(null)
+  const { userId } = useAuth()
   const { patient, loading: patientLoading } = usePatient(patientId)
   const { matches, loading: matchingLoading, findMatches, acceptMatch } = useMatching()
   const [acceptedMatch, setAcceptedMatch] = useState(null)
@@ -20,13 +22,14 @@ const PatientMatching = () => {
   useEffect(() => {
     // Get patient ID from localStorage
     const savedPatientId = localStorage.getItem('currentPatientId')
-    if (savedPatientId) {
-      setPatientId(savedPatientId)
+    const resolvedId = userId || savedPatientId
+    if (resolvedId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPatientId(resolvedId)
     } else {
-      // If no patient ID, redirect to intake
-      navigate('/patient/intake')
+      navigate('/login')
     }
-  }, [navigate])
+  }, [navigate, userId])
 
   const handleFindMatches = async () => {
     if (!patient) return
@@ -85,10 +88,10 @@ const PatientMatching = () => {
         <AlertCircle className="h-12 w-12 text-ink-400 mx-auto mb-4" />
         <h2 className="text-xl font-semibold text-ink-900 dark:text-white mb-2">Patient Not Found</h2>
         <p className="text-sm text-ink-500 dark:text-ink-300 mb-4">
-          Please complete the intake form first.
+          We couldn’t load your patient profile. Please contact support or try again later.
         </p>
-        <Button onClick={() => navigate('/patient/intake')}>
-          Go to Intake Form
+        <Button onClick={() => navigate('/patient/portal')}>
+          Back to Patient Portal
         </Button>
       </div>
     )
@@ -106,9 +109,9 @@ const PatientMatching = () => {
             We'll match you with the best available appointments
           </p>
         </div>
-        <Button variant="outline" onClick={() => navigate('/patient/intake')}>
+        <Button variant="outline" onClick={() => navigate('/patient/portal')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Intake
+          Back to Portal
         </Button>
       </div>
 

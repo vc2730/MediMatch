@@ -66,7 +66,7 @@ const SignupDoctor = () => {
       }
 
       console.log('Registering doctor...')
-      const { user, doctorId } = await registerDoctor(
+      const { user } = await registerDoctor(
         formData.email,
         formData.password,
         doctorData

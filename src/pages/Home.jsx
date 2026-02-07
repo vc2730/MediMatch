@@ -3,21 +3,44 @@ import { useNavigate } from 'react-router-dom'
 import { Card } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { UserCircle, Stethoscope, ArrowRight } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
+import { seedAllDemoData, clearDemoData } from '../services/seedData'
 
 const Home = () => {
   const navigate = useNavigate()
-  const { logout } = useAuth()
   const [selectedRole, setSelectedRole] = useState(null)
+  const [seeding, setSeeding] = useState(false)
+  const [seedStatus, setSeedStatus] = useState(null)
+  const [seedError, setSeedError] = useState('')
 
-  const handleRoleSelect = (role) => {
-    setSelectedRole(role)
 
-    // Navigate based on role
-    if (role === 'patient') {
-      navigate('/signup/patient')
-    } else {
-      navigate('/signup/doctor')
+  const handleSeed = async () => {
+    setSeeding(true)
+    setSeedError('')
+    setSeedStatus(null)
+    try {
+      const result = await seedAllDemoData()
+      setSeedStatus(result)
+    } catch (error) {
+      setSeedError(error.message || 'Failed to seed demo data')
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  const handleReset = async () => {
+    setSeeding(true)
+    setSeedError('')
+    setSeedStatus(null)
+    try {
+      const result = await clearDemoData()
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clear demo data')
+      }
+      setSeedStatus({ reset: true })
+    } catch (error) {
+      setSeedError(error.message || 'Failed to clear demo data')
+    } finally {
+      setSeeding(false)
     }
   }
 
@@ -172,6 +195,30 @@ const Home = () => {
               check system status
             </a>
           </p>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-dashed border-ink-200 dark:border-ink-800 p-6 text-center">
+          <p className="text-sm text-ink-500 dark:text-ink-400 mb-4">
+            Demo mode: seed sample doctors, patients, and appointment slots
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button onClick={handleSeed} disabled={seeding}>
+              {seeding ? 'Seeding...' : 'Seed Demo Data'}
+            </Button>
+            <Button variant="outline" onClick={handleReset} disabled={seeding}>
+              Reset Demo Data
+            </Button>
+          </div>
+          {seedStatus && (
+            <p className="mt-3 text-xs text-ink-500 dark:text-ink-400">
+              {seedStatus.reset
+                ? 'Demo data reset complete.'
+                : `Seeded ${seedStatus.doctorsSeeded} doctors, ${seedStatus.patientsSeeded} patients, ${seedStatus.appointmentsSeeded} appointments.`}
+            </p>
+          )}
+          {seedError && (
+            <p className="mt-3 text-xs text-red-600 dark:text-red-400">{seedError}</p>
+          )}
         </div>
       </div>
     </div>

@@ -15,7 +15,7 @@ import { db } from '../firebase/config';
  * @param {Object} matchData - Match details
  * @returns {Promise<string>} FlowGlad workflow ID
  */
-export const triggerMatchWorkflow = async (matchId, matchData) => {
+export const triggerMatchWorkflow = async (matchId) => {
   try {
     // This is a placeholder for Person 3's FlowGlad API integration
     // Person 3 will implement the actual API call
@@ -23,41 +23,7 @@ export const triggerMatchWorkflow = async (matchId, matchData) => {
     console.log('🔄 Triggering FlowGlad workflow for match:', matchId);
 
     // Example workflow data structure
-    const workflowPayload = {
-      matchId,
-      patientId: matchData.patientId,
-      appointmentId: matchData.appointmentId,
-      priorityTier: matchData.priorityTier,
-      urgencyScore: matchData.urgencyScore,
-      timestamp: new Date().toISOString(),
-      workflowType: 'patient_appointment_match',
-      actions: [
-        {
-          action: 'send_patient_notification',
-          data: {
-            patientId: matchData.patientId,
-            notificationType: 'sms_and_email',
-            template: 'match_found'
-          }
-        },
-        {
-          action: 'send_doctor_notification',
-          data: {
-            doctorId: matchData.doctorId,
-            notificationType: 'email',
-            template: 'new_patient_match'
-          }
-        },
-        {
-          action: 'schedule_reminder',
-          data: {
-            reminderTime: '+24_hours',
-            recipientId: matchData.patientId,
-            message: 'Reminder: Please confirm your appointment'
-          }
-        }
-      ]
-    };
+    // Example workflow data structure (for reference only)
 
     // TODO (Person 3): Replace with actual FlowGlad API call
     // const response = await fetch('https://api.flowglad.com/workflows', {

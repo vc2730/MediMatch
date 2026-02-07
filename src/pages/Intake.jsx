@@ -30,7 +30,7 @@ const SPECIALTIES = [
 
 const Intake = () => {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { user, isDoctor, isPatient, login } = useAuth()
   const [submitting, setSubmitting] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState(null)
@@ -212,8 +212,7 @@ Valid specialties are: ${SPECIALTIES.join(', ')}.`
     setSubmitting(true)
 
     try {
-      // Generate unique patient ID
-      const patientId = `patient_${Date.now()}`
+      const patientId = isPatient && user?.uid ? user.uid : `patient_${Date.now()}`
 
       // Calculate wait time days (starts at 0)
       const registeredDate = new Date()
@@ -252,11 +251,12 @@ Valid specialties are: ${SPECIALTIES.join(', ')}.`
 
       console.log('✅ Patient saved successfully')
 
-      // Store patient ID in localStorage and auth context
-      login(patientId, 'patient')
-
-      // Navigate to patient matching page
-      navigate('/patient/matching')
+      if (!isDoctor) {
+        login(patientId, 'patient')
+        navigate('/patient/matching')
+      } else {
+        navigate('/doctor/dashboard')
+      }
     } catch (error) {
       console.error('Error submitting intake:', error)
       alert('Error submitting form. Please try again.')

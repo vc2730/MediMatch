@@ -3,7 +3,7 @@
  * Populate Firestore with realistic test data for demos and development
  */
 
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore';
 import {
   saveUserProfile,
   createAppointment,
@@ -11,6 +11,7 @@ import {
   createNotification
 } from './database';
 import { calculateMatchScore } from './matching';
+import { db } from '../firebase/config';
 
 // ============================================
 // DEMO DOCTORS
@@ -505,4 +506,62 @@ export const getSeedDataSummary = () => {
     appointmentsPerDoctor: '~50 (over 14 days)',
     totalAppointmentsEstimate: DEMO_DOCTORS.length * 50
   };
+};
+
+/**
+ * Clear demo data from Firestore (best-effort)
+ * Deletes demo doctors/patients, their appointments, matches, and notifications.
+ */
+export const clearDemoData = async () => {
+  console.log('🧹 Clearing demo data...');
+
+  const doctorIds = DEMO_DOCTORS.map((d) => d.id);
+  const patientIds = DEMO_PATIENTS.map((p) => p.id);
+
+  const deleteDocsByIds = async (collectionName, ids) => {
+    const batch = writeBatch(db);
+    ids.forEach((id) => batch.delete(doc(db, collectionName, id)));
+    await batch.commit();
+  };
+
+  const deleteByQuery = async (q) => {
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return;
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+  };
+
+  try {
+    // Delete users
+    await deleteDocsByIds('users', [...doctorIds, ...patientIds]);
+
+    // Delete appointments by doctorId
+    for (let i = 0; i < doctorIds.length; i += 10) {
+      const batchIds = doctorIds.slice(i, i + 10);
+      const q = query(collection(db, 'appointments'), where('doctorId', 'in', batchIds));
+      await deleteByQuery(q);
+    }
+
+    // Delete matches by patientId
+    for (let i = 0; i < patientIds.length; i += 10) {
+      const batchIds = patientIds.slice(i, i + 10);
+      const q = query(collection(db, 'matches'), where('patientId', 'in', batchIds));
+      await deleteByQuery(q);
+    }
+
+    // Delete notifications by userId
+    const notificationIds = [...doctorIds, ...patientIds];
+    for (let i = 0; i < notificationIds.length; i += 10) {
+      const batchIds = notificationIds.slice(i, i + 10);
+      const q = query(collection(db, 'notifications'), where('userId', 'in', batchIds));
+      await deleteByQuery(q);
+    }
+
+    console.log('✅ Demo data cleared');
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Error clearing demo data:', error);
+    return { success: false, error: error.message };
+  }
 };

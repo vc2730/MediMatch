@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Activity,
@@ -18,17 +18,36 @@ import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
 import { usePatients } from '../hooks/usePatients'
 import { useDoctorMatches } from '../hooks/useMatches'
-import { updateMatchStatus } from '../services/database'
+import { createAppointment, subscribeToDoctorAppointments, updateMatchStatus } from '../services/database'
 import { calculateEquityScore } from '../lib/equityEngine'
 import { mockPatients, wastedSlotsStats } from '../lib/mockData'
+import { useAuth } from '../contexts/AuthContext'
+import { Timestamp } from 'firebase/firestore'
 
 const DoctorDashboard = () => {
   const { patients, loading: patientsLoading, error: patientsError, usingDemo } = usePatients()
-  const [doctorId] = useState('doctor_1') // TODO: Get from auth context
+  const { userId, userProfile } = useAuth()
+  const doctorId = userId || 'doctor_1'
   const { matches, loading: matchesLoading, error: matchesError, refresh: refreshMatches } = useDoctorMatches(doctorId)
 
   const [expandedAppointment, setExpandedAppointment] = useState(null)
   const [expandedQueuePatient, setExpandedQueuePatient] = useState(null)
+  const [doctorAppointments, setDoctorAppointments] = useState([])
+  const [slotError, setSlotError] = useState('')
+  const [creatingSlot, setCreatingSlot] = useState(false)
+  const [newSlot, setNewSlot] = useState({
+    date: '',
+    time: '',
+    specialty: userProfile?.specialty || 'primary_care'
+  })
+
+  useEffect(() => {
+    if (!doctorId) return
+    const unsubscribe = subscribeToDoctorAppointments(doctorId, (appointments) => {
+      setDoctorAppointments(appointments)
+    })
+    return () => unsubscribe()
+  }, [doctorId])
 
   const queueSource = useMemo(() => {
     if (!usingDemo && patients.length > 0) return patients
@@ -136,6 +155,50 @@ const DoctorDashboard = () => {
       alert('Match rejected. Appointment slot is now available again.')
     } catch (error) {
       alert('Error rejecting match: ' + error.message)
+    }
+  }
+
+  const handleSlotChange = (event) => {
+    const { name, value } = event.target
+    setNewSlot((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleCreateSlot = async (event) => {
+    event.preventDefault()
+    setSlotError('')
+
+    if (!newSlot.date || !newSlot.time) {
+      setSlotError('Please select a date and time.')
+      return
+    }
+
+    try {
+      setCreatingSlot(true)
+      const dateValue = new Date(newSlot.date)
+      const appointmentData = {
+        doctorName: userProfile?.fullName || 'Doctor',
+        clinicName: userProfile?.clinicName || 'Clinic Pending',
+        specialty: newSlot.specialty,
+        date: Timestamp.fromDate(dateValue),
+        time: newSlot.time,
+        duration: 30,
+        address: userProfile?.address || 'Address pending',
+        zipCode: userProfile?.zipCode || '00000',
+        city: userProfile?.city || 'New York',
+        state: userProfile?.state || 'NY',
+        insuranceAccepted: userProfile?.insuranceAccepted || ['Medicaid', 'Medicare', 'Private'],
+        languagesOffered: userProfile?.languages || ['English'],
+        wheelchairAccessible: true,
+        publicTransitNearby: true
+      }
+
+      await createAppointment(doctorId, appointmentData)
+      setNewSlot((prev) => ({ ...prev, date: '', time: '' }))
+    } catch (error) {
+      console.error('Error creating appointment slot:', error)
+      setSlotError('Unable to create slot. Please try again.')
+    } finally {
+      setCreatingSlot(false)
     }
   }
 
@@ -479,6 +542,96 @@ const DoctorDashboard = () => {
               })}
             </div>
           )}
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Availability Slots</h2>
+          </div>
+
+          <form onSubmit={handleCreateSlot} className="grid gap-4 md:grid-cols-4">
+            <div className="space-y-2 md:col-span-1">
+              <label className="text-xs uppercase tracking-wide text-ink-500 dark:text-ink-400">Date</label>
+              <input
+                type="date"
+                name="date"
+                value={newSlot.date}
+                onChange={handleSlotChange}
+                className="w-full rounded-lg border border-ink-200 bg-white/80 px-3 py-2 text-sm dark:border-ink-800 dark:bg-ink-950/60"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <label className="text-xs uppercase tracking-wide text-ink-500 dark:text-ink-400">Time</label>
+              <input
+                type="time"
+                name="time"
+                value={newSlot.time}
+                onChange={handleSlotChange}
+                className="w-full rounded-lg border border-ink-200 bg-white/80 px-3 py-2 text-sm dark:border-ink-800 dark:bg-ink-950/60"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <label className="text-xs uppercase tracking-wide text-ink-500 dark:text-ink-400">Specialty</label>
+              <select
+                name="specialty"
+                value={newSlot.specialty}
+                onChange={handleSlotChange}
+                className="w-full rounded-lg border border-ink-200 bg-white/80 px-3 py-2 text-sm dark:border-ink-800 dark:bg-ink-950/60"
+              >
+                <option value="primary_care">Primary Care</option>
+                <option value="cardiology">Cardiology</option>
+                <option value="orthopedics">Orthopedics</option>
+                <option value="neurology">Neurology</option>
+                <option value="dermatology">Dermatology</option>
+                <option value="emergency">Emergency</option>
+                <option value="gastroenterology">Gastroenterology</option>
+                <option value="pulmonology">Pulmonology</option>
+                <option value="endocrinology">Endocrinology</option>
+                <option value="psychiatry">Psychiatry</option>
+                <option value="ophthalmology">Ophthalmology</option>
+                <option value="ent">ENT</option>
+              </select>
+            </div>
+            <div className="flex items-end md:col-span-1">
+              <Button type="submit" className="w-full" disabled={creatingSlot}>
+                {creatingSlot ? 'Creating...' : 'Add Slot'}
+              </Button>
+            </div>
+          </form>
+
+          {slotError && (
+            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+              {slotError}
+            </div>
+          )}
+
+          <div className="mt-6 space-y-3">
+            {doctorAppointments.length === 0 ? (
+              <div className="text-sm text-ink-500 dark:text-ink-300">
+                No availability slots yet. Add one above to open your schedule.
+              </div>
+            ) : (
+              doctorAppointments.slice(0, 6).map((slot) => (
+                <div
+                  key={slot.id}
+                  className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3 text-sm dark:border-ink-800 dark:bg-ink-900/60"
+                >
+                  <div>
+                    <p className="font-medium text-ink-900 dark:text-white">
+                      {slot.date?.toDate ? slot.date.toDate().toLocaleDateString() : 'Date TBD'} at {slot.time || 'Time TBD'}
+                    </p>
+                    <p className="text-ink-500 dark:text-ink-300">
+                      {slot.specialty?.replace('_', ' ') || 'Specialty pending'} · {slot.clinicName || 'Clinic pending'}
+                    </p>
+                  </div>
+                  <Badge variant={slot.status === 'available' ? 'success' : 'warning'}>
+                    {slot.status || 'available'}
+                  </Badge>
+                </div>
+              ))
+            )}
+          </div>
         </Card>
       </div>
     </div>
