@@ -10,7 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^12.9.0",
     "lucide-react": "^0.542.0",
+    "plugin-react": "^0.0.1-security",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0"

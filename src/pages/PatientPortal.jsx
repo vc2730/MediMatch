@@ -1,72 +1,116 @@
-import { useState } from 'react'
-import { AlertTriangle, Bell, Calendar, CheckCircle2, HelpCircle, Mic, Volume2 } from 'lucide-react'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion'
-import { Badge } from '../components/ui/badge'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Bell, Calendar, Volume2, Heart, AlertCircle, CheckCircle, Clock } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
-import Modal from '../components/Modal'
-import SectionHeader from '../components/SectionHeader'
-import { matchExplanation, patientAppointment, patientNotifications, patientProfile } from '../lib/demoData'
-
-const statusVariants = {
-  Matched: 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-200',
-  Pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
-  Confirmed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
-}
+import { Badge } from '../components/ui/badge'
+import { usePatientMatches } from '../hooks/useMatches'
+import { useNotifications } from '../hooks/useNotifications'
+import { usePatient } from '../hooks/usePatients'
+import { getAppointmentById } from '../services/database'
 
 const PatientPortal = () => {
-  const [status, setStatus] = useState(patientProfile.status)
-  const [calendarOpen, setCalendarOpen] = useState(false)
-  const [voiceOpen, setVoiceOpen] = useState(false)
-  const [notifications, setNotifications] = useState(patientNotifications)
+  const navigate = useNavigate()
+  const [played, setPlayed] = useState(false)
+  const [patientId, setPatientId] = useState(null)
+  const [appointments, setAppointments] = useState([])
+  const [loadingAppointments, setLoadingAppointments] = useState(false)
+  const fetchedMatchIds = useRef(new Set())
 
-  const iconMap = {
-    calendar: Calendar,
-    bell: Bell,
-    check: CheckCircle2,
-    alert: AlertTriangle
-  }
+  const { patient, loading: patientLoading } = usePatient(patientId)
+  const { confirmedMatches, loading: matchesLoading } = usePatientMatches(patientId)
+  const { notifications, unreadCount, markAsRead, loading: notificationsLoading } = useNotifications(patientId)
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((note) => ({ ...note, read: true })))
-  }
+  useEffect(() => {
+    // Get patient ID from localStorage
+    const savedPatientId = localStorage.getItem('currentPatientId')
+    if (savedPatientId) {
+      setPatientId(savedPatientId)
+    }
+  }, [])
 
-  const toggleRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((note) => (note.id === id ? { ...note, read: !note.read } : note))
+  // Fetch appointment details for confirmed matches
+  useEffect(() => {
+    if (!confirmedMatches || confirmedMatches.length === 0) {
+      setAppointments([])
+      return
+    }
+
+    // Get the IDs of matches we need to fetch
+    const matchIds = confirmedMatches.map(m => m.id).join(',')
+    const fetchedIds = Array.from(fetchedMatchIds.current).join(',')
+
+    // Only fetch if we have new matches
+    if (matchIds === fetchedIds) {
+      return
+    }
+
+    const fetchAppointments = async () => {
+      setLoadingAppointments(true)
+      try {
+        const appointmentPromises = confirmedMatches.map(async (match) => {
+          const appointment = await getAppointmentById(match.appointmentId)
+          return { ...appointment, matchId: match.id, matchStatus: match.status }
+        })
+        const fetchedAppointments = await Promise.all(appointmentPromises)
+        setAppointments(fetchedAppointments.filter(apt => apt !== null))
+
+        // Update the ref with the fetched match IDs
+        fetchedMatchIds.current = new Set(confirmedMatches.map(m => m.id))
+      } catch (error) {
+        console.error('Error fetching appointments:', error)
+        setAppointments([])
+      } finally {
+        setLoadingAppointments(false)
+      }
+    }
+
+    fetchAppointments()
+  }, [confirmedMatches])
+
+  const upcomingAppointments = appointments.filter(apt => apt && apt.status === 'matched')
+  const nextAppointment = upcomingAppointments[0]
+
+  if (patientLoading || !patientId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto"></div>
+          <p className="mt-4 text-sm text-ink-500 dark:text-ink-300">Loading your portal...</p>
+        </div>
+      </div>
     )
   }
 
-  const confirmAppointment = () => {
-    setStatus('Confirmed')
+  if (!patient) {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="h-12 w-12 text-ink-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-ink-900 dark:text-white mb-2">No Patient Profile</h2>
+        <p className="text-sm text-ink-500 dark:text-ink-300 mb-4">
+          Please complete the intake form to create your profile.
+        </p>
+        <Button onClick={() => navigate('/patient/intake')}>
+          Go to Intake Form
+        </Button>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-8">
-      <SectionHeader
-        eyebrow="Patient Portal"
-        title="Patient Updates"
-        description="Stay informed with appointment status, care coordination, and reminders."
-        action={
-          <div className="flex items-center gap-2 rounded-full bg-ink-100 px-4 py-2 text-xs font-semibold text-ink-600 dark:bg-ink-800 dark:text-ink-200">
-            <HelpCircle className="h-4 w-4" />
-            {patientProfile.support}
-          </div>
-        }
-      />
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs uppercase tracking-[0.3em] text-ink-400 dark:text-ink-500">Patient Portal</p>
+        <h1 className="mt-2 text-2xl font-semibold text-ink-900 dark:text-white">
+          Welcome, {patient.fullName}
+        </h1>
+        <p className="mt-2 text-sm text-ink-500 dark:text-ink-300">
+          View your appointments, notifications, and health updates.
+        </p>
+      </div>
 
-      <Card className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-ink-400 dark:text-ink-500">Patient Summary</p>
-            <h1 className="mt-2 text-2xl font-semibold text-ink-900 dark:text-white">{patientProfile.name}</h1>
-            <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">CareFlow Exchange status update</p>
-          </div>
-          <span className={`rounded-full px-4 py-2 text-xs font-semibold ${statusVariants[status]}`}>{status}</span>
-        </div>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        {/* Upcoming Appointment */}
         <Card className="p-6">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-brand-100 p-3 text-brand-600 dark:bg-brand-500/20 dark:text-brand-200">
@@ -74,160 +118,160 @@ const PatientPortal = () => {
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">Upcoming Appointment</p>
+              {loadingAppointments ? (
+                <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">Loading...</p>
+              ) : nextAppointment ? (
+                <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-white">
+                  {nextAppointment.date?.toDate().toLocaleDateString()} at {nextAppointment.time}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">No appointments scheduled</p>
+              )}
+            </div>
+          </div>
+
+          {nextAppointment ? (
+            <>
+              <p className="mt-4 text-sm text-ink-600 dark:text-ink-300">
+                <strong>{patient.specialty?.replace('_', ' ')}</strong> visit with {nextAppointment.doctorName}
+              </p>
+              <p className="text-sm text-ink-500 dark:text-ink-400">
+                {nextAppointment.clinicName}
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <Badge variant="success" className="text-xs">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Confirmed
+                </Badge>
+              </div>
+              <Button variant="outline" className="mt-4" onClick={() => navigate('/patient/matching')}>
+                Find More Appointments
+              </Button>
+            </>
+          ) : confirmedMatches.length === 0 ? (
+            <>
+              <p className="mt-4 text-sm text-ink-500 dark:text-ink-300">
+                You don't have any confirmed appointments yet.
+              </p>
+              <Button className="mt-4" onClick={() => navigate('/patient/matching')}>
+                Find Appointments
+              </Button>
+            </>
+          ) : (
+            <p className="mt-4 text-sm text-ink-500 dark:text-ink-300">Loading appointment details...</p>
+          )}
+        </Card>
+
+        {/* Notifications */}
+        <Card className="p-6">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-ink-100 p-3 text-ink-700 dark:bg-ink-800 dark:text-ink-200 relative">
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">Notifications</p>
               <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-white">
-                {patientAppointment.date} · {patientAppointment.time}
+                {notificationsLoading ? 'Loading...' : `${notifications.length} Total`}
               </p>
             </div>
           </div>
-          <div className="mt-4 grid gap-2 text-sm text-ink-500 dark:text-ink-300">
-            <p>
-              {patientAppointment.clinic} · {patientAppointment.address}
-            </p>
-            <p>
-              {patientAppointment.doctor} · {patientAppointment.specialty}
-            </p>
-            <p>{patientAppointment.notes}</p>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={confirmAppointment}>
-              <CheckCircle2 className="h-4 w-4" />
-              Confirm appointment
-            </Button>
-            <Button variant="outline" onClick={() => setCalendarOpen(true)}>
-              Add to calendar
-            </Button>
-          </div>
-        </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-ink-100 p-3 text-ink-700 dark:bg-ink-800 dark:text-ink-200">
-                <Bell className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">Notifications</p>
-                <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-white">Timeline</p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" onClick={markAllRead}>
-              Mark all read
-            </Button>
-          </div>
-          <div className="mt-4 space-y-3">
-            {notifications.map((note) => (
-              <button
-                key={note.id}
-                type="button"
-                onClick={() => toggleRead(note.id)}
-                className={`relative w-full rounded-xl border px-4 py-3 pl-12 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${
-                  note.read
-                    ? 'border-ink-200/70 bg-white/70 dark:border-ink-800/70 dark:bg-ink-900/60'
-                    : 'border-brand-200 bg-brand-50/60 dark:border-brand-500/40 dark:bg-brand-500/10'
-                }`}
-              >
-                <span className="absolute left-4 top-4 flex h-7 w-7 items-center justify-center rounded-full bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-200">
-                  {(() => {
-                    const Icon = iconMap[note.icon] || Bell
-                    return <Icon className="h-4 w-4" />
-                  })()}
-                </span>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-ink-900 dark:text-white">{note.title}</p>
-                    <p className="mt-1 text-xs text-ink-500 dark:text-ink-300">{note.body}</p>
+          {notificationsLoading ? (
+            <p className="mt-4 text-sm text-ink-500 dark:text-ink-300">Loading notifications...</p>
+          ) : notifications.length > 0 ? (
+            <ul className="mt-4 space-y-3 max-h-48 overflow-y-auto">
+              {notifications.slice(0, 5).map((notif) => (
+                <li
+                  key={notif.id}
+                  className={`text-sm border-l-2 pl-3 py-1 cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-800 rounded transition ${
+                    notif.read
+                      ? 'border-ink-200 dark:border-ink-700 text-ink-500 dark:text-ink-400'
+                      : 'border-brand-500 text-ink-900 dark:text-white font-medium'
+                  }`}
+                  onClick={() => !notif.read && markAsRead(notif.id)}
+                >
+                  <div className="flex items-start gap-2">
+                    {notif.type === 'match_found' && <Heart className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />}
+                    {notif.type === 'appointment_reminder' && <Clock className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />}
+                    <div className="flex-1">
+                      <p className="font-semibold text-xs">{notif.title}</p>
+                      <p className="text-xs">{notif.message}</p>
+                      <p className="text-xs text-ink-400 dark:text-ink-500 mt-1">
+                        {notif.createdAt?.toDate().toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                  {!note.read && <Badge variant="warning">New</Badge>}
-                </div>
-                <p className="mt-2 text-xs text-ink-400 dark:text-ink-500">{note.time}</p>
-              </button>
-            ))}
-          </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-ink-500 dark:text-ink-300">No notifications yet.</p>
+          )}
         </Card>
       </div>
 
+      {/* All Appointments */}
+      {upcomingAppointments.length > 1 && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-ink-900 dark:text-white mb-4">
+            All Appointments ({upcomingAppointments.length})
+          </h2>
+          <div className="space-y-3">
+            {upcomingAppointments.map((apt, idx) => (
+              <div key={idx} className="border border-ink-200 dark:border-ink-700 rounded-lg p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-ink-900 dark:text-white">
+                      {apt.doctorName}
+                    </h4>
+                    <p className="text-sm text-ink-500 dark:text-ink-400">{apt.clinicName}</p>
+                    <div className="mt-2 flex items-center gap-4 text-sm text-ink-600 dark:text-ink-300">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {apt.date?.toDate().toLocaleDateString()}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {apt.time}
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="success" className="text-xs">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Confirmed
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Voice Notification (Placeholder) */}
       <Card className="p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-ink-900 dark:text-white">Voice Notification</h2>
             <p className="mt-1 text-sm text-ink-500 dark:text-ink-300">
-              Listen to the latest reminder in your preferred language.
+              Send a personalized reminder via voice (FlowGlad integration).
             </p>
           </div>
-          <Button onClick={() => setVoiceOpen(true)}>
-            <Volume2 className="h-4 w-4" />
-            Play voice notification
+          <Button onClick={() => setPlayed(true)} variant="outline">
+            <Volume2 className="h-4 w-4 mr-2" />
+            Play Voice Notification
           </Button>
         </div>
+        {played && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+            Voice notification feature will be available once FlowGlad integration is complete (Person 3).
+          </div>
+        )}
       </Card>
-
-      <Accordion type="single" collapsible className="space-y-2">
-        <AccordionItem value="explain">
-          <AccordionTrigger value="explain">Why was I prioritized?</AccordionTrigger>
-          <AccordionContent value="explain">
-            <ul className="list-disc space-y-2 pl-4">
-              {matchExplanation.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-
-      <Modal
-        open={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        title="Add to calendar"
-        description="Copy and paste this ICS snippet into your calendar app."
-        actions={
-          <Button variant="outline" onClick={() => setCalendarOpen(false)}>
-            Close
-          </Button>
-        }
-      >
-        <div className="rounded-xl border border-ink-200 bg-ink-50 p-4 text-xs text-ink-700 dark:border-ink-800 dark:bg-ink-900/70 dark:text-ink-200">
-          BEGIN:VCALENDAR
-          <br />
-          VERSION:2.0
-          <br />
-          BEGIN:VEVENT
-          <br />
-          SUMMARY:CareFlow Appointment
-          <br />
-          DTSTART:20260304T103000
-          <br />
-          LOCATION:{patientAppointment.address}
-          <br />
-          DESCRIPTION:{patientAppointment.clinic} with {patientAppointment.doctor}
-          <br />
-          END:VEVENT
-          <br />
-          END:VCALENDAR
-        </div>
-      </Modal>
-
-      <Modal
-        open={voiceOpen}
-        onClose={() => setVoiceOpen(false)}
-        title="Voice reminder"
-        description="Transcript and preview"
-        actions={
-          <Button variant="outline" onClick={() => setVoiceOpen(false)}>
-            Close
-          </Button>
-        }
-      >
-        <div className="space-y-4">
-          <div className="rounded-xl border border-ink-200 bg-ink-50 p-4 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-900/70 dark:text-ink-200">
-            "Hello {patientProfile.name}, this is a reminder for your appointment on {patientAppointment.date} at{' '}
-            {patientAppointment.time}. Please arrive 15 minutes early."
-          </div>
-          <div className="flex items-center gap-3 rounded-xl border border-dashed border-ink-200 bg-white/70 px-4 py-3 text-sm text-ink-500 dark:border-ink-800 dark:bg-ink-950/70 dark:text-ink-300">
-            <Mic className="h-4 w-4" />
-            Audio preview coming soon
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }

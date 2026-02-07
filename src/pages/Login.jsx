@@ -1,137 +1,162 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Badge } from '../components/ui/badge'
-import { Button } from '../components/ui/button'
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { Card } from '../components/ui/card'
+import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { Select, SelectItem } from '../components/ui/select'
-import { useAuth } from '../app/providers/AuthProvider'
-
-const doctorDemo = {
-  role: 'doctor',
-  email: 'doctor@demo.com',
-  password: 'demo1234'
-}
-
-const patientDemo = {
-  role: 'patient',
-  email: 'patient@demo.com',
-  password: 'demo1234'
-}
+import { signIn, getAuthErrorMessage } from '../services/auth'
+import { useAuth } from '../contexts/AuthContext'
+import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react'
 
 const Login = () => {
   const navigate = useNavigate()
-  const { login, user } = useAuth()
-  const [role, setRole] = useState('doctor')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const { login } = useAuth()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  })
 
-  useEffect(() => {
-    if (user) {
-      navigate(user.role === 'patient' ? '/patient' : '/', { replace: true })
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+    setError('') // Clear error on input change
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    try {
+      const { user, profile } = await signIn(formData.email, formData.password)
+
+      // Update auth context
+      login(user.uid, profile.role, profile)
+
+      // Navigate based on role
+      if (profile.role === 'patient') {
+        navigate('/patient/portal')
+      } else if (profile.role === 'doctor') {
+        navigate('/doctor/dashboard')
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err) {
+      console.error('Login error:', err)
+      setError(getAuthErrorMessage(err.code))
+    } finally {
+      setLoading(false)
     }
-  }, [user, navigate])
-
-  const handleEmailChange = (event) => {
-    const nextEmail = event.target.value
-    setEmail(nextEmail)
-    if (nextEmail === doctorDemo.email) setRole('doctor')
-    if (nextEmail === patientDemo.email) setRole('patient')
-  }
-
-  const handleSubmit = (event) => {
-    event.preventDefault()
-    login(role, email)
-    navigate(role === 'patient' ? '/patient' : '/', { replace: true })
-  }
-
-  const fillDemo = (demo) => {
-    setRole(demo.role)
-    setEmail(demo.email)
-    setPassword(demo.password)
-  }
-
-  const continueDemo = (demo) => {
-    login(demo.role, demo.email)
-    navigate(demo.role === 'patient' ? '/patient' : '/', { replace: true })
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div className="text-center">
-        <Badge variant="neutral">Demo mode</Badge>
-        <h1 className="mt-4 text-3xl font-semibold text-ink-900 dark:text-white">CareFlow Exchange Login</h1>
-        <p className="mt-2 text-sm text-ink-500 dark:text-ink-300">
-          Use a demo account to explore doctor or patient workflows. No real authentication.
-        </p>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 to-ink-50 dark:from-ink-950 dark:to-brand-950 p-4">
+      <div className="max-w-md w-full">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-ink-900 dark:text-white mb-2">
+            Welcome Back
+          </h1>
+          <p className="text-ink-600 dark:text-ink-300">
+            Sign in to your MediMatch account
+          </p>
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="p-6">
-          <form className="space-y-5" onSubmit={handleSubmit}>
+        <Card className="p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-500/30 dark:bg-red-500/10">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select id="role" value={role} onChange={(event) => setRole(event.target.value)}>
-                <SelectItem value="doctor">Doctor / Admin</SelectItem>
-                <SelectItem value="patient">Patient</SelectItem>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email Address</Label>
               <Input
                 id="email"
                 name="email"
-                value={email}
-                onChange={handleEmailChange}
-                placeholder="you@demo.com"
                 type="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="you@example.com"
                 required
+                autoComplete="email"
               />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 name="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="demo1234"
                 type="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="••••••••"
                 required
+                autoComplete="current-password"
               />
             </div>
-            <Button type="submit" className="w-full">
-              Sign In
+
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
             </Button>
-            <p className="text-xs text-ink-400 dark:text-ink-500">
-              Demo mode only. Credentials are not validated or sent anywhere.
-            </p>
           </form>
+
+          <div className="mt-6 text-center space-y-4">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-ink-200 dark:border-ink-700"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white dark:bg-ink-900 text-ink-500 dark:text-ink-400">
+                  Don't have an account?
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => navigate('/signup/patient')}
+              >
+                Sign up as Patient
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => navigate('/signup/doctor')}
+              >
+                Sign up as Doctor
+              </Button>
+            </div>
+          </div>
         </Card>
 
-        <Card className="space-y-4 p-6">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">Fast demo</p>
-            <h2 className="mt-2 text-lg font-semibold text-ink-900 dark:text-white">One-click access</h2>
-          </div>
-          <div className="space-y-3">
-            <Button variant="secondary" className="w-full" onClick={() => fillDemo(doctorDemo)}>
-              Use Doctor Demo
-            </Button>
-            <Button variant="secondary" className="w-full" onClick={() => fillDemo(patientDemo)}>
-              Use Patient Demo
-            </Button>
-          </div>
-          <div className="space-y-3">
-            <Button className="w-full" onClick={() => continueDemo(doctorDemo)}>
-              Continue as Doctor Demo
-            </Button>
-            <Button className="w-full" onClick={() => continueDemo(patientDemo)}>
-              Continue as Patient Demo
-            </Button>
-          </div>
-        </Card>
+        <div className="mt-6 text-center">
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/')}
+            className="text-ink-600 dark:text-ink-300"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Home
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediMatch - Seed Demo Data</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+        .success {
+            background: #10b981;
+        }
+        .success:hover {
+            background: #059669;
+        }
+        #output {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-top: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .log-success { color: #10b981; }
+        .log-error { color: #ef4444; }
+        .log-info { color: #3b82f6; }
+        .log-warning { color: #f59e0b; }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        .status.pending { background: #fef3c7; color: #92400e; }
+        .status.success { background: #d1fae5; color: #065f46; }
+        .status.error { background: #fee2e2; color: #991b1b; }
+        .steps {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 6px;
+        }
+        .step {
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .step:last-child {
+            border-bottom: none;
+        }
+        .step-status {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .step-status.pending { background: #cbd5e1; }
+        .step-status.running { background: #3b82f6; animation: pulse 1.5s infinite; }
+        .step-status.done { background: #10b981; }
+        .step-status.failed { background: #ef4444; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 MediMatch Demo Data Seeder</h1>
+        <p class="subtitle">Populate Firestore with demo doctors, patients, and appointments</p>
+
+        <div class="steps">
+            <div class="step" id="step1">
+                <span class="step-status pending" id="status1"></span>
+                <strong>Step 1:</strong> Seed 5 Doctors
+            </div>
+            <div class="step" id="step2">
+                <span class="step-status pending" id="status2"></span>
+                <strong>Step 2:</strong> Seed 6 Patients
+            </div>
+            <div class="step" id="step3">
+                <span class="step-status pending" id="status3"></span>
+                <strong>Step 3:</strong> Generate ~250 Appointments
+            </div>
+        </div>
+
+        <div>
+            <button id="seedBtn" onclick="runSeeding()">🌱 Seed All Demo Data</button>
+            <button onclick="testMatching()" id="testBtn" disabled>🔍 Test Matching Algorithm</button>
+            <button onclick="clearOutput()">🗑️ Clear Output</button>
+        </div>
+
+        <div id="output"></div>
+    </div>
+
+    <script type="module">
+        import { seedAllDemoData, DEMO_PATIENTS } from './src/services/seedData.js';
+        import { findMatchesForPatient } from './src/services/matching.js';
+        import { getUserProfile } from './src/services/database.js';
+
+        let outputDiv;
+        let seedBtn;
+        let testBtn;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            outputDiv = document.getElementById('output');
+            seedBtn = document.getElementById('seedBtn');
+            testBtn = document.getElementById('testBtn');
+
+            log('✅ Firebase services loaded', 'success');
+            log('📝 Ready to seed demo data', 'info');
+            log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        });
+
+        function log(message, type = 'info') {
+            if (!outputDiv) outputDiv = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = `log-${type}`;
+            outputDiv.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function updateStepStatus(stepNum, status) {
+            const statusEl = document.getElementById(`status${stepNum}`);
+            statusEl.className = `step-status ${status}`;
+        }
+
+        window.runSeeding = async function() {
+            seedBtn.disabled = true;
+            seedBtn.textContent = '⏳ Seeding...';
+
+            log('\n🌱 Starting demo data seeding...', 'info');
+            log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+
+            try {
+                // Override console.log to capture output
+                const originalLog = console.log;
+                console.log = function(...args) {
+                    originalLog.apply(console, args);
+                    const message = args.join(' ');
+
+                    if (message.includes('Seeding doctors')) {
+                        updateStepStatus(1, 'running');
+                    } else if (message.includes('Seeded') && message.includes('doctors')) {
+                        updateStepStatus(1, 'done');
+                    } else if (message.includes('Seeding patients')) {
+                        updateStepStatus(2, 'running');
+                    } else if (message.includes('Seeded') && message.includes('patients')) {
+                        updateStepStatus(2, 'done');
+                    } else if (message.includes('Seeding appointments')) {
+                        updateStepStatus(3, 'running');
+                    } else if (message.includes('Seeded') && message.includes('appointments')) {
+                        updateStepStatus(3, 'done');
+                    }
+
+                    if (message.includes('✅')) {
+                        log(message, 'success');
+                    } else if (message.includes('❌')) {
+                        log(message, 'error');
+                    } else if (message.includes('🩺') || message.includes('👥') || message.includes('📅')) {
+                        log(message, 'info');
+                    } else {
+                        log(message, 'info');
+                    }
+                };
+
+                const summary = await seedAllDemoData();
+
+                console.log = originalLog;
+
+                log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
+                log('🎉 SEEDING COMPLETE!', 'success');
+                log(`✅ ${summary.doctorsSeeded} doctors created`, 'success');
+                log(`✅ ${summary.patientsSeeded} patients created`, 'success');
+                log(`✅ ${summary.appointmentsSeeded} appointments created`, 'success');
+                log(`⏱️  Completed in ${summary.duration}`, 'success');
+                log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
+
+                seedBtn.textContent = '✅ Seeding Complete';
+                seedBtn.className = 'success';
+                testBtn.disabled = false;
+
+            } catch (error) {
+                updateStepStatus(1, 'failed');
+                updateStepStatus(2, 'failed');
+                updateStepStatus(3, 'failed');
+                log(`\n❌ ERROR: ${error.message}`, 'error');
+                log(error.stack, 'error');
+                seedBtn.disabled = false;
+                seedBtn.textContent = '🔄 Retry Seeding';
+            }
+        };
+
+        window.testMatching = async function() {
+            testBtn.disabled = true;
+            testBtn.textContent = '⏳ Testing...';
+
+            log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            log('🔍 Testing Matching Algorithm', 'info');
+            log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+
+            try {
+                // Test with Sarah Martinez (Priority Tier 1 patient)
+                log('\n📋 Testing with demo patient: Sarah Martinez', 'info');
+                log('   • High urgency (8/10)', 'info');
+                log('   • Medicaid + Public transit (barriers)', 'info');
+                log('   • Wait time: 18 days', 'info');
+                log('   • Specialty: Cardiology', 'info');
+
+                const patient = await getUserProfile('patient_1');
+
+                if (!patient) {
+                    log('\n⚠️  Patient not found. Make sure to seed data first!', 'warning');
+                    testBtn.disabled = false;
+                    testBtn.textContent = '🔍 Test Matching Algorithm';
+                    return;
+                }
+
+                log('\n🔄 Running matching algorithm...', 'info');
+                const matches = await findMatchesForPatient(patient, 5);
+
+                if (matches.length === 0) {
+                    log('\n❌ No matches found!', 'error');
+                    log('   Make sure appointments were seeded correctly.', 'warning');
+                } else {
+                    log(`\n✅ Found ${matches.length} matches!`, 'success');
+                    log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+
+                    matches.forEach((match, index) => {
+                        log(`\n🏥 Match #${index + 1}:`, 'info');
+                        log(`   Doctor: ${match.appointment.doctorName}`, 'info');
+                        log(`   Clinic: ${match.appointment.clinicName}`, 'info');
+                        log(`   Date: ${match.appointment.date.toDate().toLocaleDateString()}`, 'info');
+                        log(`   Time: ${match.appointment.time}`, 'info');
+                        log(`
+   📊 SCORING:`, 'info');
+                        log(`      • Total Score: ${match.scores.totalMatchScore}/100`, 'success');
+                        log(`      • Priority Tier: ${match.scores.priorityTier}`, match.scores.priorityTier <= 2 ? 'success' : 'info');
+                        log(`      • Urgency: ${match.scores.urgencyScore}/10`, 'info');
+                        log(`      • Wait Time: ${match.scores.waitTimeScore}/10`, 'info');
+                        log(`      • Distance: ${match.scores.distanceScore}/10`, 'info');
+                        log(`      • Barriers: ${match.scores.barrierBonus}/10`, 'info');
+                        log(`      • Insurance: ${match.scores.insuranceMatchScore}/10`, 'info');
+                        log(`   💡 ${match.scores.reasoningExplanation}`, 'info');
+                    });
+
+                    log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
+                    log('✅ Matching Algorithm Test PASSED!', 'success');
+                    log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'success');
+                }
+
+                testBtn.textContent = '✅ Test Complete';
+                testBtn.className = 'success';
+                setTimeout(() => {
+                    testBtn.disabled = false;
+                    testBtn.textContent = '🔍 Test Matching Algorithm';
+                    testBtn.className = '';
+                }, 3000);
+
+            } catch (error) {
+                log(`\n❌ TEST ERROR: ${error.message}`, 'error');
+                log(error.stack, 'error');
+                testBtn.disabled = false;
+                testBtn.textContent = '🔄 Retry Test';
+            }
+        };
+
+        window.clearOutput = function() {
+            if (!outputDiv) outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = '';
+            log('🧹 Output cleared', 'info');
+        };
+    </script>
+</body>
+</html>
