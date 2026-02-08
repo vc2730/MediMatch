@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import {
   getPatientMatches,
@@ -121,8 +121,7 @@ export const useDoctorMatches = (doctorId) => {
       batches.forEach((batch, index) => {
         const q = query(
           collection(db, 'matches'),
-          where('appointmentId', 'in', batch),
-          orderBy('matchedAt', 'desc')
+          where('appointmentId', 'in', batch)
         );
 
         const unsub = onSnapshot(

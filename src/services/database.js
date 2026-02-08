@@ -703,12 +703,16 @@ export const subscribeToUserProfile = (userId, callback) => {
 export const subscribeToPatientMatches = (patientId, callback) => {
   const q = query(
     collection(db, 'matches'),
-    where('patientId', '==', patientId),
-    orderBy('matchedAt', 'desc')
+    where('patientId', '==', patientId)
   );
 
   return onSnapshot(q, (snapshot) => {
-    const matches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const matches = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        if (!a.matchedAt || !b.matchedAt) return 0;
+        return b.matchedAt.seconds - a.matchedAt.seconds;
+      });
     callback(matches);
   }, (error) => {
     console.error('Error in patient matches subscription:', error);
@@ -725,12 +729,16 @@ export const subscribeToUserNotifications = (userId, callback) => {
   const q = query(
     collection(db, 'notifications'),
     where('userId', '==', userId),
-    orderBy('createdAt', 'desc'),
     limit(50)
   );
 
   return onSnapshot(q, (snapshot) => {
-    const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const notifications = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        if (!a.createdAt || !b.createdAt) return 0;
+        return b.createdAt.seconds - a.createdAt.seconds;
+      });
     callback(notifications);
   }, (error) => {
     console.error('Error in notifications subscription:', error);
@@ -746,12 +754,16 @@ export const subscribeToUserNotifications = (userId, callback) => {
 export const subscribeToDoctorAppointments = (doctorId, callback) => {
   const q = query(
     collection(db, 'appointments'),
-    where('doctorId', '==', doctorId),
-    orderBy('date', 'asc')
+    where('doctorId', '==', doctorId)
   );
 
   return onSnapshot(q, (snapshot) => {
-    const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const appointments = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        return a.date.seconds - b.date.seconds;
+      });
     callback(appointments);
   }, (error) => {
     console.error('Error in doctor appointments subscription:', error);
@@ -769,13 +781,18 @@ export const subscribeToAvailableAppointments = (specialty, callback) => {
     collection(db, 'appointments'),
     where('status', '==', 'available'),
     where('specialty', '==', specialty),
-    where('date', '>=', Timestamp.now()),
-    orderBy('date', 'asc'),
     limit(50)
   );
 
   return onSnapshot(q, (snapshot) => {
-    const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const now = Timestamp.now();
+    const appointments = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(apt => !apt.date || apt.date >= now)
+      .sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        return a.date.seconds - b.date.seconds;
+      });
     callback(appointments);
   }, (error) => {
     console.error('Error in available appointments subscription:', error);

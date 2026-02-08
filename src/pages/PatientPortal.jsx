@@ -31,7 +31,7 @@ const PatientPortal = () => {
   const fetchedMatchIds = useRef(new Set())
 
   const { patient, loading: patientLoading } = usePatient(patientId)
-  const { confirmedMatches, pendingMatches, updateStatus } = usePatientMatches(patientId)
+  const { matches, confirmedMatches, pendingMatches, updateStatus } = usePatientMatches(patientId)
   const { notifications, markAsRead, loading: notificationsLoading } = useNotifications(patientId)
 
   useEffect(() => {
@@ -42,7 +42,7 @@ const PatientPortal = () => {
   }, [])
 
   useEffect(() => {
-    if (!confirmedMatches || confirmedMatches.length === 0) {
+    if (!matches || matches.length === 0) {
       setAppointments([])
       return
     }
@@ -73,7 +73,8 @@ const PatientPortal = () => {
     }
 
     fetchAppointments()
-  }, [confirmedMatches])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches])
 
   const upcomingAppointments = appointments.filter(apt => apt)
   const newAppointmentsCount = upcomingAppointments.length
