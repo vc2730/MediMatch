@@ -23,7 +23,9 @@ const SignupDoctor = () => {
     clinicName: '',
     specialty: 'primary_care',
     zip: '',
-    licenseNumber: ''
+    licenseNumber: '',
+    yearsExperience: '',
+    totalPatients: ''
   })
 
   const handleChange = (event) => {
@@ -57,12 +59,18 @@ const SignupDoctor = () => {
         fullName: formData.name,
         phone: formData.phone || 'Not provided',
         clinicName: formData.clinicName,
+        specialty: formData.specialty,
         specialties: [formData.specialty],
         zipCode: formData.zip,
         licenseNumber: formData.licenseNumber,
         acceptedInsurance: ['Medicaid', 'Medicare', 'Commercial PPO', 'Private'],
         availableSlots: 0,
-        totalMatches: 0
+        totalMatches: 0,
+        stats: {
+          yearsExperience: parseInt(formData.yearsExperience) || 0,
+          totalPatients: parseInt(formData.totalPatients) || 0,
+          rating: 5.0
+        }
       }
 
       console.log('Registering doctor...')
@@ -234,6 +242,50 @@ const SignupDoctor = () => {
                   placeholder="10001"
                   required
                 />
+              </div>
+            </div>
+
+            {/* Professional Stats */}
+            <div className="border-t border-ink-200 dark:border-ink-700 pt-4 space-y-4">
+              <h3 className="font-semibold text-ink-900 dark:text-white">Professional Experience</h3>
+              <p className="text-sm text-ink-500 dark:text-ink-400">
+                These stats will be visible to patients browsing the doctor directory.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="yearsExperience">Years of Experience *</Label>
+                  <Input
+                    id="yearsExperience"
+                    name="yearsExperience"
+                    type="number"
+                    min="0"
+                    max="70"
+                    value={formData.yearsExperience}
+                    onChange={handleChange}
+                    placeholder="10"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="totalPatients">Total Patients Treated *</Label>
+                  <Input
+                    id="totalPatients"
+                    name="totalPatients"
+                    type="number"
+                    min="0"
+                    value={formData.totalPatients}
+                    onChange={handleChange}
+                    placeholder="500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 border border-blue-200 dark:border-blue-500/30">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  <strong>Note:</strong> Your initial rating will be set to 5.0 stars. This will be updated based on patient feedback.
+                </p>
               </div>
             </div>
 

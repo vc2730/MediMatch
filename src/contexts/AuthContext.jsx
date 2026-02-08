@@ -1,9 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react'
 import { onAuthChange, getUserProfile as getProfile, signOutUser } from '../services/auth'
+import { DEMO_PATIENTS, DEMO_DOCTORS } from '../services/seedData'
 
 /**
  * AuthContext - Manages user authentication state with Firebase
+ * Supports demo mode for hackathon presentations
  */
 
 const AuthContext = createContext(null)
@@ -20,55 +22,122 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [isDemoMode, setIsDemoMode] = useState(false)
 
   useEffect(() => {
+    // Check if we're resuming a demo session from localStorage
+    const storedDemo = localStorage.getItem('isDemoMode')
+    const storedRole = localStorage.getItem('userRole')
+    const storedId = storedRole === 'patient'
+      ? localStorage.getItem('currentPatientId')
+      : localStorage.getItem('currentDoctorId')
+
+    if (storedDemo === 'true' && storedId) {
+      const demoData = storedRole === 'patient'
+        ? DEMO_PATIENTS.find(p => p.id === storedId) || DEMO_PATIENTS[0]
+        : DEMO_DOCTORS.find(d => d.id === storedId) || DEMO_DOCTORS[0]
+
+      setUser({ uid: demoData.id, email: demoData.email, isDemo: true })
+      setUserProfile({ ...demoData, id: demoData.id })
+      setIsDemoMode(true)
+      setLoading(false)
+      return
+    }
+
     // Subscribe to Firebase auth state changes
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // User is signed in, get their profile from Firestore
           const profile = await getProfile(firebaseUser.uid)
           setUser(firebaseUser)
           setUserProfile(profile)
+          setIsDemoMode(false)
 
-          // Also store in localStorage for backward compatibility with demo data
-          localStorage.setItem('currentPatientId', firebaseUser.uid)
-          localStorage.setItem('currentDoctorId', firebaseUser.uid)
-          localStorage.setItem('userRole', profile.role)
+          if (profile?.role === 'patient') {
+            localStorage.setItem('currentPatientId', firebaseUser.uid)
+          } else if (profile?.role === 'doctor') {
+            localStorage.setItem('currentDoctorId', firebaseUser.uid)
+            const name = profile?.fullName || profile?.name || 'Doctor'
+            localStorage.setItem('loggedInDoctor', JSON.stringify({ doctorId: firebaseUser.uid, doctorName: name }))
+            localStorage.setItem('activeDemoDoctor', JSON.stringify({ doctorId: firebaseUser.uid, doctorName: name }))
+          }
+          localStorage.setItem('userRole', profile?.role || '')
+          localStorage.removeItem('isDemoMode')
         } catch (error) {
           console.error('Error loading user profile:', error)
-          setUser(null)
-          setUserProfile(null)
+          // Don't clear user state if profile fetch fails — user is still authed
+          // Just set the firebase user without profile so they can still navigate
+          setUser(firebaseUser)
         }
       } else {
-        // User is signed out
         setUser(null)
         setUserProfile(null)
       }
       setLoading(false)
     })
 
-    // Cleanup subscription on unmount
     return () => unsubscribe()
   }, [])
 
-  const login = (uid, role) => {
-    // This is called after successful authentication
-    // The onAuthChange listener will handle setting the state
+  /**
+   * Log in as a demo user (no Firebase auth needed)
+   * @param {'patient'|'doctor'} role
+   * @param {number} index - Which demo user to use (default 0)
+   */
+  const loginDemo = (role, index = 0) => {
+    const demoData = role === 'patient'
+      ? DEMO_PATIENTS[index] || DEMO_PATIENTS[0]
+      : DEMO_DOCTORS[index] || DEMO_DOCTORS[0]
+
+    setUser({ uid: demoData.id, email: demoData.email, isDemo: true })
+    setUserProfile({ ...demoData, id: demoData.id })
+    setIsDemoMode(true)
+    setLoading(false)
+
+    localStorage.setItem('isDemoMode', 'true')
+    localStorage.setItem('userRole', role)
+    if (role === 'patient') {
+      localStorage.setItem('currentPatientId', demoData.id)
+    } else {
+      localStorage.setItem('currentDoctorId', demoData.id)
+    }
+  }
+
+  const login = (uid, role, profile = null) => {
+    // Set auth state immediately so ProtectedRoute doesn't redirect while
+    // waiting for the onAuthChange listener to fire
+    if (profile) {
+      setUser({ uid, email: profile.email, isDemo: false })
+      setUserProfile({ ...profile, id: uid, role })
+    }
+    setIsDemoMode(false)
     if (role === 'patient') {
       localStorage.setItem('currentPatientId', uid)
     } else if (role === 'doctor') {
       localStorage.setItem('currentDoctorId', uid)
+      // Write loggedInDoctor immediately so patient pages can detect it
+      const name = profile?.fullName || profile?.name || 'Doctor'
+      localStorage.setItem('loggedInDoctor', JSON.stringify({ doctorId: uid, doctorName: name }))
+      localStorage.setItem('activeDemoDoctor', JSON.stringify({ doctorId: uid, doctorName: name }))
     }
     localStorage.setItem('userRole', role)
+    localStorage.removeItem('isDemoMode')
   }
 
   const logout = async () => {
     try {
-      await signOutUser()
+      if (!isDemoMode) {
+        await signOutUser()
+      }
+      setUser(null)
+      setUserProfile(null)
+      setIsDemoMode(false)
       localStorage.removeItem('currentPatientId')
       localStorage.removeItem('currentDoctorId')
       localStorage.removeItem('userRole')
+      localStorage.removeItem('isDemoMode')
+      localStorage.removeItem('loggedInDoctor')
+      localStorage.removeItem('activeDemoDoctor')
     } catch (error) {
       console.error('Error signing out:', error)
     }
@@ -82,8 +151,10 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user,
     isPatient: userProfile?.role === 'patient',
     isDoctor: userProfile?.role === 'doctor',
+    isDemoMode,
     loading,
     login,
+    loginDemo,
     logout
   }
 

@@ -1,16 +1,16 @@
 /**
- * MediMatch Matching Algorithm
- * Equity-aware appointment matching system
+ * MediMatch ER Room Matching Algorithm
+ * Equity-aware emergency room triage and routing system
  *
  * This algorithm prioritizes patients based on:
- * 1. Medical urgency (from Gemini AI)
- * 2. Wait time
- * 3. Geographic accessibility
+ * 1. Medical urgency / ESI triage level (from Gemini AI)
+ * 2. Time waiting in ER
+ * 3. Geographic proximity to ER
  * 4. Socioeconomic barriers (transportation, insurance)
  * 5. Healthcare equity factors
  */
 
-import { getAvailableAppointments } from './database';
+import { getAllAvailableAppointments } from './database';
 import { calculateEquityScore } from '../lib/equityEngine';
 
 // ============================================
@@ -18,18 +18,21 @@ import { calculateEquityScore } from '../lib/equityEngine';
 // ============================================
 
 const SCORING_WEIGHTS = {
-  URGENCY: 3,        // Max 30 points (urgency 1-10)
-  WAIT_TIME: 2,      // Max 20 points (wait time score 0-10)
-  DISTANCE: 1.5,     // Max 15 points (distance score 0-10)
-  BARRIERS: 2,       // Max 20 points (barrier bonus 0-10)
-  INSURANCE: 1.5     // Max 15 points (insurance match 0-10)
+  URGENCY: 4,        // Max 40 points — dominant factor in ER (urgency 1-10)
+  TRIAGE: 1.5,       // Max 15 points — ESI triage level bonus
+  WAIT_TIME: 1,      // Max 10 points (wait time score 0-10)
+  DISTANCE: 1,       // Max 10 points (distance score 0-10)
+  SPECIALTY: 1,      // Max 10 points — specialty match bonus
+  BARRIERS: 1,       // Max 10 points (barrier bonus 0-10)
+  INSURANCE: 0.5     // Max 5 points (insurance match — ER must treat everyone)
 };
 
 const PRIORITY_TIERS = {
-  URGENT_WITH_BARRIERS: 1,  // Urgency ≥7 AND (limited transport OR Medicaid/Uninsured)
-  HIGH_URGENCY: 2,          // Urgency ≥7
-  LONG_WAIT: 3,             // Waiting >14 days
-  STANDARD: 4               // Everyone else
+  IMMEDIATE: 1,              // ESI Level 1 — life-threatening, immediate
+  EMERGENT_WITH_BARRIERS: 2, // ESI Level 2 + equity barriers
+  EMERGENT: 3,               // ESI Level 2 — high risk
+  URGENT: 4,                 // ESI Level 3 — stable but urgent
+  STANDARD: 5                // ESI Level 4-5 — less urgent
 };
 
 const BARRIER_FACTORS = {
@@ -101,25 +104,55 @@ export const calculateDistanceScore = (patientZip, appointmentZip) => {
     return 5; // Default medium score if zip missing
   }
 
+  const pZip = String(patientZip).trim();
+  const aZip = String(appointmentZip).trim();
+
   // Same zip code = maximum score
-  if (patientZip === appointmentZip) {
+  if (pZip === aZip) {
     return 10;
   }
 
-  // For hackathon: simple prefix matching
-  // First 3 digits same = nearby area
-  const patientPrefix = patientZip.substring(0, 3);
-  const appointmentPrefix = appointmentZip.substring(0, 3);
+  // Enhanced zip code proximity algorithm
+  // Uses hierarchical matching based on USPS zip code structure
 
-  if (patientPrefix === appointmentPrefix) {
-    return 7; // Same general area
+  // First digit: National area (0-9)
+  // First 3 digits (prefix): Sectional center facility (SCF)
+  // Full 5 digits: Delivery area
+
+  const matchingDigits = countMatchingDigits(pZip, aZip);
+
+  if (matchingDigits >= 4) {
+    return 9; // Adjacent neighborhoods (~2-5 miles)
+  } else if (matchingDigits === 3) {
+    return 7; // Same regional area (~10-20 miles)
+  } else if (matchingDigits === 2) {
+    return 5; // Same broader region (~30-50 miles)
+  } else if (matchingDigits === 1) {
+    return 3; // Same state/multi-state area (~100+ miles)
+  } else {
+    return 1; // Different regions (likely >200 miles)
+  }
+};
+
+/**
+ * Count matching leading digits between two zip codes
+ * @param {string} zip1 - First zip code
+ * @param {string} zip2 - Second zip code
+ * @returns {number} Number of matching leading digits
+ */
+const countMatchingDigits = (zip1, zip2) => {
+  const minLength = Math.min(zip1.length, zip2.length);
+  let count = 0;
+
+  for (let i = 0; i < minLength; i++) {
+    if (zip1[i] === zip2[i]) {
+      count++;
+    } else {
+      break; // Stop at first mismatch
+    }
   }
 
-  // Different area but could be accessible
-  return 4;
-
-  // TODO: For production, integrate with actual distance API
-  // e.g., Google Maps Distance Matrix API or zip code database
+  return count;
 };
 
 /**
@@ -149,6 +182,20 @@ export const calculateBarrierBonus = (patient) => {
   }
 
   return Math.min(Math.round(bonus * 10) / 10, 10);
+};
+
+/**
+ * Calculate specialty match score — bonus for matching room specialty
+ * @param {Object} patient - Patient data
+ * @param {Object} appointment - Appointment data
+ * @returns {number} Specialty match score 0-10
+ */
+export const calculateSpecialtyMatchScore = (patient, appointment) => {
+  if (!patient.specialty || !appointment.specialty) return 5;
+  if (patient.specialty === appointment.specialty) return 10;
+  // Adjacent specialties (e.g. primary_care can handle many things)
+  if (appointment.specialty === 'primary_care') return 4;
+  return 0;
 };
 
 /**
@@ -185,32 +232,59 @@ export const calculateInsuranceMatchScore = (patient, appointment) => {
 };
 
 /**
- * Determine priority tier for a patient
+ * Calculate ESI triage level bonus score
+ * ESI Level 1 = immediate life threat, Level 5 = non-urgent
+ * @param {Object} patient - Patient data
+ * @returns {number} Triage bonus score 0-10
+ */
+export const calculateTriageLevelScore = (patient) => {
+  const triageLevel = patient.triageLevel;
+  if (!triageLevel) {
+    // Estimate from urgency if no explicit triage level
+    const urgency = patient.aiUrgencyScore || patient.urgencyLevel || 5;
+    if (urgency >= 9) return 10;
+    if (urgency >= 7) return 7;
+    if (urgency >= 5) return 4;
+    return 1;
+  }
+  // ESI levels: 1=10pts, 2=8pts, 3=5pts, 4=2pts, 5=0pts
+  const triageScores = { 1: 10, 2: 8, 3: 5, 4: 2, 5: 0 };
+  return triageScores[triageLevel] || 5;
+};
+
+/**
+ * Determine priority tier for a patient (ER triage context)
  * @param {Object} patient - Patient data
  * @param {number} urgencyScore - Calculated urgency score
- * @returns {number} Priority tier (1-4, 1 = highest)
+ * @returns {number} Priority tier (1-5, 1 = highest)
  */
 export const calculatePriorityTier = (patient, urgencyScore) => {
-  const hasTransportBarrier = ['Limited', 'Public transit', 'Bus'].includes(patient.transportation);
+  const hasTransportBarrier = ['Limited', 'Public transit', 'Bus', 'Ambulance'].includes(patient.transportation);
   const hasInsuranceBarrier = ['Medicaid', 'Uninsured'].includes(patient.insurance);
   const hasBarriers = hasTransportBarrier || hasInsuranceBarrier;
+  const triageLevel = patient.triageLevel || (urgencyScore >= 9 ? 1 : urgencyScore >= 7 ? 2 : 3);
 
-  // Tier 1: Urgent + Barriers
-  if (urgencyScore >= 7 && hasBarriers) {
-    return PRIORITY_TIERS.URGENT_WITH_BARRIERS;
+  // Tier 1: ESI Level 1 — immediate, life-threatening
+  if (triageLevel === 1 || urgencyScore >= 9) {
+    return PRIORITY_TIERS.IMMEDIATE;
   }
 
-  // Tier 2: High Urgency
-  if (urgencyScore >= 7) {
-    return PRIORITY_TIERS.HIGH_URGENCY;
+  // Tier 2: ESI Level 2 + equity barriers
+  if (triageLevel === 2 && hasBarriers) {
+    return PRIORITY_TIERS.EMERGENT_WITH_BARRIERS;
   }
 
-  // Tier 3: Long Wait
-  if (patient.waitTimeDays > 14) {
-    return PRIORITY_TIERS.LONG_WAIT;
+  // Tier 3: ESI Level 2 — emergent
+  if (urgencyScore >= 7 || triageLevel === 2) {
+    return PRIORITY_TIERS.EMERGENT;
   }
 
-  // Tier 4: Standard
+  // Tier 4: ESI Level 3 — urgent
+  if (urgencyScore >= 5 || triageLevel === 3) {
+    return PRIORITY_TIERS.URGENT;
+  }
+
+  // Tier 5: Standard — less urgent
   return PRIORITY_TIERS.STANDARD;
 };
 
@@ -223,16 +297,20 @@ export const calculatePriorityTier = (patient, urgencyScore) => {
 export const calculateMatchScore = (patient, appointment) => {
   // Calculate individual scores
   const urgencyScore = calculateUrgencyScore(patient);
+  const triageLevelScore = calculateTriageLevelScore(patient);
   const waitTimeScore = calculateWaitTimeScore(patient);
   const distanceScore = calculateDistanceScore(patient.zipCode, appointment.zipCode);
+  const specialtyMatchScore = calculateSpecialtyMatchScore(patient, appointment);
   const barrierBonus = calculateBarrierBonus(patient);
   const insuranceMatchScore = calculateInsuranceMatchScore(patient, appointment);
 
-  // Calculate weighted total
+  // Calculate weighted total (ER-weighted: urgency dominates, specialty differentiates rooms)
   const totalMatchScore = Math.round(
     (urgencyScore * SCORING_WEIGHTS.URGENCY) +
+    (triageLevelScore * SCORING_WEIGHTS.TRIAGE) +
     (waitTimeScore * SCORING_WEIGHTS.WAIT_TIME) +
     (distanceScore * SCORING_WEIGHTS.DISTANCE) +
+    (specialtyMatchScore * SCORING_WEIGHTS.SPECIALTY) +
     (barrierBonus * SCORING_WEIGHTS.BARRIERS) +
     (insuranceMatchScore * SCORING_WEIGHTS.INSURANCE)
   );
@@ -246,8 +324,10 @@ export const calculateMatchScore = (patient, appointment) => {
     appointment,
     {
       urgencyScore,
+      triageLevelScore,
       waitTimeScore,
       distanceScore,
+      specialtyMatchScore,
       barrierBonus,
       insuranceMatchScore,
       priorityTier
@@ -256,14 +336,16 @@ export const calculateMatchScore = (patient, appointment) => {
 
   return {
     urgencyScore,
+    triageLevelScore,
     waitTimeScore,
     distanceScore,
+    specialtyMatchScore,
     barrierBonus,
     insuranceMatchScore,
     totalMatchScore,
     priorityTier,
     reasoningExplanation,
-    equityScore: calculateEquityScore(patient) // Use existing equity engine
+    equityScore: calculateEquityScore(patient)
   };
 };
 
@@ -279,44 +361,49 @@ const generateReasoningExplanation = (patient, appointment, scores) => {
 
   // Priority tier explanation
   if (scores.priorityTier === 1) {
-    reasons.push('🚨 High Priority: Urgent medical need with significant access barriers');
+    reasons.push('🚨 ESI Level 1 — Immediate: Life-threatening, requires immediate ER room');
   } else if (scores.priorityTier === 2) {
-    reasons.push('⚠️ Urgent: High medical urgency requiring prompt attention');
+    reasons.push('🔴 Emergent + Equity Barriers: High-risk patient with access barriers, fast-tracked');
   } else if (scores.priorityTier === 3) {
-    reasons.push('⏱️ Extended Wait: Patient has been waiting for over 2 weeks');
+    reasons.push('⚠️ Emergent: High medical risk requiring prompt ER attention');
+  } else if (scores.priorityTier === 4) {
+    reasons.push('🟡 Urgent: Stable but needs timely care');
   }
 
   // Urgency
-  if (scores.urgencyScore >= 8) {
-    reasons.push(`Critical urgency level (${scores.urgencyScore}/10)`);
-  } else if (scores.urgencyScore >= 6) {
-    reasons.push(`Moderate-high urgency (${scores.urgencyScore}/10)`);
+  if (scores.urgencyScore >= 9) {
+    reasons.push(`Critical triage: ${scores.urgencyScore}/10 urgency`);
+  } else if (scores.urgencyScore >= 7) {
+    reasons.push(`High urgency: ${scores.urgencyScore}/10`);
+  } else if (scores.urgencyScore >= 5) {
+    reasons.push(`Moderate urgency: ${scores.urgencyScore}/10`);
   }
 
-  // Wait time
-  if (patient.waitTimeDays >= 21) {
-    reasons.push(`Extended wait time: ${patient.waitTimeDays} days`);
-  } else if (patient.waitTimeDays >= 14) {
-    reasons.push(`Significant wait: ${patient.waitTimeDays} days`);
+  // Triage level
+  if (scores.triageLevelScore >= 8) {
+    reasons.push('ESI triage confirms immediate intervention needed');
+  }
+
+  // Wait time in ER
+  if (patient.waitTimeDays >= 1) {
+    reasons.push(`Waiting ${patient.waitTimeDays} day(s) for ER care`);
   }
 
   // Barriers
   if (scores.barrierBonus >= 7) {
-    reasons.push('Multiple access barriers identified (transportation, insurance, or language)');
+    reasons.push('Multiple equity barriers: prioritized for equitable access');
   } else if (scores.barrierBonus >= 4) {
-    reasons.push('Some access barriers present');
+    reasons.push('Equity barriers identified — boosted priority');
   }
 
   // Geography
   if (scores.distanceScore >= 8) {
-    reasons.push('Excellent geographic match - very close to patient');
+    reasons.push('Nearest available ER room');
   }
 
-  // Insurance
-  if (scores.insuranceMatchScore === 10) {
-    reasons.push(`Insurance accepted: ${patient.insurance}`);
-  } else if (scores.insuranceMatchScore === 0) {
-    reasons.push('⚠️ Insurance compatibility may need verification');
+  // Insurance — note: ER must treat regardless
+  if (patient.insurance === 'Uninsured') {
+    reasons.push('Uninsured — equity priority applied (EMTALA)');
   }
 
   return reasons.join('. ') + '.';
@@ -338,24 +425,20 @@ export const findMatchesForPatient = async (patient, limit = 5) => {
       throw new Error('Patient data with ID is required');
     }
 
-    if (!patient.specialty) {
-      throw new Error('Patient specialty is required for matching');
-    }
+    console.log(`Finding ER room matches for patient ${patient.id}`);
 
-    console.log(`Finding matches for patient ${patient.id} (${patient.specialty})`);
+    // Get ALL available ER rooms (not filtered by specialty — ER treats everyone)
+    const allSlots = await getAllAvailableAppointments();
 
-    // Get available appointments in patient's specialty
-    const appointments = await getAvailableAppointments(patient.specialty);
-
-    if (appointments.length === 0) {
-      console.log('No available appointments found for specialty:', patient.specialty);
+    if (allSlots.length === 0) {
+      console.log('No available ER rooms found');
       return [];
     }
 
-    console.log(`Found ${appointments.length} available appointments`);
+    console.log(`Found ${allSlots.length} available ER room slots`);
 
-    // Score each appointment
-    const scoredMatches = appointments.map(appointment => {
+    // Score each slot
+    const scoredMatches = allSlots.map(appointment => {
       const scores = calculateMatchScore(patient, appointment);
       return {
         appointment,
@@ -366,21 +449,28 @@ export const findMatchesForPatient = async (patient, limit = 5) => {
 
     // Sort by priority tier first, then by total score
     scoredMatches.sort((a, b) => {
-      // Lower tier number = higher priority
       if (a.scores.priorityTier !== b.scores.priorityTier) {
         return a.scores.priorityTier - b.scores.priorityTier;
       }
-      // Within same tier, higher score wins
       return b.scores.totalMatchScore - a.scores.totalMatchScore;
     });
 
-    // Return top N matches
-    const topMatches = scoredMatches.slice(0, limit);
+    // Deduplicate: one slot per doctor/room so we show distinct ER rooms
+    const seen = new Set();
+    const uniqueMatches = [];
+    for (const match of scoredMatches) {
+      const key = match.appointment.doctorId;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueMatches.push(match);
+      }
+      if (uniqueMatches.length >= limit) break;
+    }
 
-    console.log(`Returning top ${topMatches.length} matches for patient ${patient.id}`);
-    return topMatches;
+    console.log(`Returning ${uniqueMatches.length} distinct ER room matches`);
+    return uniqueMatches;
   } catch (error) {
-    console.error('Error finding matches:', error);
+    console.error('Error finding ER matches:', error);
     throw error;
   }
 };
@@ -478,23 +568,23 @@ export const batchProcessMatches = async (patients, matchesPerPatient = 3) => {
  * @returns {Object} Quality rating and label
  */
 export const getMatchQuality = (totalMatchScore, priorityTier) => {
-  if (priorityTier === 1 && totalMatchScore >= 80) {
-    return { rating: 'excellent', label: 'Excellent Match', color: 'green' };
+  if (priorityTier === 1 || (priorityTier <= 2 && totalMatchScore >= 80)) {
+    return { rating: 'immediate', label: 'Immediate — ESI Level 1', color: 'red' };
   }
 
   if (totalMatchScore >= 80) {
-    return { rating: 'very-good', label: 'Very Good Match', color: 'blue' };
+    return { rating: 'emergent', label: 'Emergent — High Priority', color: 'orange' };
   }
 
   if (totalMatchScore >= 60) {
-    return { rating: 'good', label: 'Good Match', color: 'teal' };
+    return { rating: 'urgent', label: 'Urgent — Timely Care', color: 'yellow' };
   }
 
   if (totalMatchScore >= 40) {
-    return { rating: 'fair', label: 'Fair Match', color: 'yellow' };
+    return { rating: 'semi-urgent', label: 'Semi-Urgent', color: 'blue' };
   }
 
-  return { rating: 'low', label: 'Low Match', color: 'gray' };
+  return { rating: 'non-urgent', label: 'Non-Urgent', color: 'gray' };
 };
 
 // ============================================

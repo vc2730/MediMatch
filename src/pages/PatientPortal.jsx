@@ -2,13 +2,22 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertCircle,
+  AlertTriangle,
+  BookOpen,
   Calendar,
   CheckCircle,
+  ClipboardList,
   Clock,
+  CreditCard,
+  DollarSign,
   FileText,
+  Heart,
   Lightbulb,
   MapPin,
+  Pencil,
+  Phone,
   RefreshCw,
+  Shield,
   Stethoscope,
   User,
   Volume2,
@@ -20,26 +29,28 @@ import { Badge } from '../components/ui/badge'
 import { usePatientMatches } from '../hooks/useMatches'
 import { useNotifications } from '../hooks/useNotifications'
 import { usePatient } from '../hooks/usePatients'
+import { useAuth } from '../contexts/AuthContext'
 import { getAppointmentById } from '../services/database'
+import { generateTriageAdvice } from '../services/k2think'
 
 const PatientPortal = () => {
   const navigate = useNavigate()
+  const { userId } = useAuth()
   const [played, setPlayed] = useState(false)
-  const [patientId, setPatientId] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [loadingAppointments, setLoadingAppointments] = useState(false)
+  const [scheduledBookings, setScheduledBookings] = useState([])
+  const [triageAdvice, setTriageAdvice] = useState(null)
+  const [triageLoading, setTriageLoading] = useState(false)
+  const [triageError, setTriageError] = useState(null)
   const fetchedMatchIds = useRef(new Set())
+
+  // Use auth userId directly; fall back to localStorage for backward compat
+  const patientId = userId || localStorage.getItem('currentPatientId')
 
   const { patient, loading: patientLoading } = usePatient(patientId)
   const { matches, confirmedMatches, pendingMatches, updateStatus } = usePatientMatches(patientId)
   const { notifications, markAsRead, loading: notificationsLoading } = useNotifications(patientId)
-
-  useEffect(() => {
-    const savedPatientId = localStorage.getItem('currentPatientId')
-    if (savedPatientId) {
-      setPatientId(savedPatientId)
-    }
-  }, [])
 
   useEffect(() => {
     if (!matches || matches.length === 0) {
@@ -76,11 +87,38 @@ const PatientPortal = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches])
 
+  // Load scheduled bookings from localStorage
+  useEffect(() => {
+    const load = () => {
+      try {
+        const all = JSON.parse(localStorage.getItem('demoBookings') || '[]')
+        setScheduledBookings(all.filter(b => b.patientId === patientId))
+      } catch {
+        setScheduledBookings([])
+      }
+    }
+    load()
+  }, [patientId])
+
+  // Fetch K2Think triage advice when patient data is ready
+  useEffect(() => {
+    if (!patient || triageAdvice || triageLoading) return
+    setTriageLoading(true)
+    setTriageError(null)
+    generateTriageAdvice(patient)
+      .then(advice => setTriageAdvice(advice))
+      .catch(err => {
+        console.error('K2Think error:', err)
+        setTriageError('Could not load AI triage advice.')
+      })
+      .finally(() => setTriageLoading(false))
+  }, [patient])
+
   const upcomingAppointments = appointments.filter(apt => apt)
   const newAppointmentsCount = upcomingAppointments.length
   const incompleteActionItems = notifications.filter((notif) => !notif.read)
 
-  if (patientLoading || !patientId) {
+  if (patientLoading || (!patientId && !userId)) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -119,11 +157,35 @@ const PatientPortal = () => {
               <h1 className="text-3xl font-bold">Hi {patient.fullName}! Welcome back.</h1>
             </div>
           </div>
-          <div className="ml-auto">
-            <Button asChild className="bg-white text-blue-700 hover:bg-white/90">
+          <div className="ml-auto flex gap-2 flex-wrap">
+            <Button asChild variant="outline" className="border-purple-300/50 text-white bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 font-semibold shadow-lg">
+              <Link to="/patient/multimodal-triage">
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                AI Multimodal Triage
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="border-white/40 text-white bg-white/10 hover:bg-white/20">
+              <Link to="/patient/doctors">
+                <Stethoscope className="mr-2 h-4 w-4" />
+                Browse Doctors
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="border-white/40 text-white bg-white/10 hover:bg-white/20">
+              <Link to="/patient/profile">
+                <Pencil className="mr-2 h-4 w-4" />
+                Update Health Info
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="border-white/40 text-white bg-white/10 hover:bg-white/20">
+              <Link to="/patient/appointments">
+                <BookOpen className="mr-2 h-4 w-4" />
+                Schedule Appointment
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
               <Link to="/patient/matching">
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Find Appointments
+                Find ER Room
               </Link>
             </Button>
           </div>
@@ -135,7 +197,7 @@ const PatientPortal = () => {
             </div>
             <div>
               <div className="text-2xl font-bold">{newAppointmentsCount}</div>
-              <div className="text-sm opacity-90">New Appointments</div>
+              <div className="text-sm opacity-90">ER Rooms Assigned</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -153,16 +215,16 @@ const PatientPortal = () => {
       <Card className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <Calendar className="h-5 w-5 text-blue-600" />
-          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Your Upcoming Appointments</h2>
+          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Your ER Room Assignments</h2>
         </div>
 
         {loadingAppointments ? (
-          <p className="text-sm text-ink-500 dark:text-ink-300">Loading appointments...</p>
+          <p className="text-sm text-ink-500 dark:text-ink-300">Loading ER assignments...</p>
         ) : upcomingAppointments.length === 0 ? (
           <div className="text-center py-10 text-ink-500 dark:text-ink-300">
             <Calendar className="h-10 w-10 mx-auto mb-3 text-ink-400" />
-            <p className="font-medium">No appointments scheduled</p>
-            <p className="text-sm mt-1">Check your request tracker for pending requests.</p>
+            <p className="font-medium">No ER room assigned yet</p>
+            <p className="text-sm mt-1">Check your request tracker for pending triage status.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -206,68 +268,54 @@ const PatientPortal = () => {
       </Card>
 
       <Card className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <FileText className="h-5 w-5 text-purple-600" />
-          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Request Tracker</h2>
-          <Badge variant="secondary">
-            {pendingMatches.length + confirmedMatches.length} active requests
-          </Badge>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <BookOpen className="h-5 w-5 text-indigo-600" />
+            <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Scheduled Appointments</h2>
+            {scheduledBookings.length > 0 && (
+              <Badge variant="secondary">{scheduledBookings.length}</Badge>
+            )}
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/patient/appointments">
+              <Calendar className="h-4 w-4 mr-2" />
+              Book New
+            </Link>
+          </Button>
         </div>
 
-        {pendingMatches.length === 0 && confirmedMatches.length === 0 ? (
-          <div className="text-center py-10 text-ink-500 dark:text-ink-300">
-            <Stethoscope className="h-10 w-10 mx-auto mb-3 text-ink-400" />
-            <p className="font-medium">No active requests</p>
-            <p className="text-sm mt-1">Your doctor requests will appear here.</p>
+        {scheduledBookings.length === 0 ? (
+          <div className="text-center py-8 text-ink-500 dark:text-ink-300">
+            <BookOpen className="h-10 w-10 mx-auto mb-3 text-ink-400" />
+            <p className="font-medium">No scheduled appointments</p>
+            <p className="text-sm mt-1">Book a future appointment with a specialist.</p>
+            <Button asChild size="sm" className="mt-3">
+              <Link to="/patient/appointments">Browse Available Slots</Link>
+            </Button>
           </div>
         ) : (
-          <div className="space-y-4">
-            {pendingMatches.map((match) => (
-              <div key={match.id} className="rounded-xl border border-ink-200 overflow-hidden dark:border-ink-800">
-                <div className="bg-ink-50 p-5 dark:bg-ink-900/60">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Doctor Review Pending</h3>
-                        <Badge variant="warning" className="text-xs">
-                          <Clock className="h-3 w-3" /> Pending
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-ink-500 dark:text-ink-300">
-                        We’re reviewing your request for an available slot.
-                      </p>
+          <div className="space-y-3">
+            {scheduledBookings.map((booking, i) => (
+              <div key={i} className="rounded-xl border border-ink-200 p-4 dark:border-ink-800">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="font-semibold text-ink-900 dark:text-white">{booking.doctorName}</p>
+                    <p className="text-sm text-ink-500">{booking.clinicName}</p>
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-ink-400">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {booking.time}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {booking.address}
+                      </span>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateStatus(match.id, 'rejected')}
-                    >
-                      <XCircle className="mr-2 h-4 w-4" />
-                      Withdraw Request
-                    </Button>
                   </div>
-                </div>
-              </div>
-            ))}
-            {confirmedMatches.map((match) => (
-              <div key={match.id} className="rounded-xl border border-ink-200 overflow-hidden dark:border-ink-800">
-                <div className="bg-ink-50 p-5 dark:bg-ink-900/60">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Appointment Accepted</h3>
-                        <Badge variant="success" className="text-xs">
-                          <CheckCircle className="h-3 w-3" /> Accepted
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-ink-500 dark:text-ink-300">
-                        Your appointment has been confirmed. Check your upcoming appointments.
-                      </p>
-                    </div>
-                    <Button size="sm" onClick={() => navigate('/patient/portal')}>
-                      View Details
-                    </Button>
-                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                    <CheckCircle className="h-3 w-3" />
+                    Scheduled
+                  </span>
                 </div>
               </div>
             ))}
@@ -275,35 +323,124 @@ const PatientPortal = () => {
         )}
       </Card>
 
+      {/* Triage Status — K2Think powered */}
       <Card className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <AlertCircle className="h-5 w-5 text-orange-500" />
-          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Action Items</h2>
+        <div className="flex items-center gap-3 mb-4">
+          <FileText className="h-5 w-5 text-purple-600" />
+          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Triage Status</h2>
+          {triageAdvice && (
+            <span className={`text-xs font-bold px-3 py-1 rounded-full ${triageAdvice.colors.bg} ${triageAdvice.colors.text}`}>
+              {triageAdvice.priorityLabel}
+            </span>
+          )}
         </div>
 
-        {notificationsLoading ? (
-          <p className="text-sm text-ink-500 dark:text-ink-300">Loading action items...</p>
-        ) : incompleteActionItems.length === 0 ? (
-          <div className="text-center py-10 text-ink-500 dark:text-ink-300">
-            <Lightbulb className="h-10 w-10 mx-auto mb-3 text-ink-400" />
-            <p className="font-medium">No action items right now</p>
-            <p className="text-sm mt-1">We’ll alert you if anything needs attention.</p>
+        {triageLoading ? (
+          <div className="flex items-center gap-3 py-6 text-ink-500 dark:text-ink-300">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600" />
+            <span className="text-sm">AI is assessing your triage status...</span>
+          </div>
+        ) : triageError ? (
+          <div className={`rounded-xl border p-4 ${
+            triageAdvice?.colors?.border || 'border-ink-200 dark:border-ink-700'
+          }`}>
+            <div className="flex items-start gap-3">
+              <Stethoscope className="h-5 w-5 text-ink-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-ink-900 dark:text-white mb-1">
+                  {pendingMatches.length > 0 ? 'In Triage Queue' : confirmedMatches.length > 0 ? 'ER Room Assigned' : 'Not Yet Queued'}
+                </p>
+                <p className="text-sm text-ink-500 dark:text-ink-300">{triageError}</p>
+              </div>
+            </div>
+          </div>
+        ) : triageAdvice ? (
+          <div className={`rounded-xl border p-5 ${triageAdvice.colors.border} ${triageAdvice.colors.bg}`}>
+            <p className={`text-sm font-medium ${triageAdvice.colors.text} mb-1`}>
+              {triageAdvice.priorityLabel} — AI Triage Assessment
+            </p>
+            <p className="text-sm text-ink-700 dark:text-ink-200 leading-relaxed">
+              {triageAdvice.triageAssessment}
+            </p>
+            {(pendingMatches.length > 0 || confirmedMatches.length > 0) && (
+              <div className="mt-3 pt-3 border-t border-ink-200/50 dark:border-ink-700/50 space-y-1">
+                {pendingMatches.map(m => (
+                  <div key={m.id} className="flex items-center justify-between text-xs">
+                    <span className="text-ink-600 dark:text-ink-300 flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Pending room assignment
+                    </span>
+                    <button onClick={() => updateStatus(m.id, 'rejected')} className="text-red-500 hover:text-red-700 flex items-center gap-1">
+                      <XCircle className="h-3 w-3" /> Withdraw
+                    </button>
+                  </div>
+                ))}
+                {confirmedMatches.map(m => (
+                  <span key={m.id} className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" /> ER Room confirmed
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
+          <div className="text-center py-8 text-ink-500 dark:text-ink-300">
+            <Stethoscope className="h-10 w-10 mx-auto mb-3 text-ink-400" />
+            <p className="font-medium">Triage status unavailable</p>
+            <p className="text-sm mt-1">Update your health info to get an AI assessment.</p>
+          </div>
+        )}
+      </Card>
+
+      {/* Action Items — K2Think powered tips */}
+      <Card className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Lightbulb className="h-5 w-5 text-orange-500" />
+          <h2 className="text-xl font-semibold text-ink-900 dark:text-white">Action Items</h2>
+          {triageAdvice?.actionItems?.length > 0 && (
+            <Badge variant="secondary">{triageAdvice.actionItems.length}</Badge>
+          )}
+        </div>
+
+        {triageLoading ? (
+          <div className="flex items-center gap-3 py-6 text-ink-500 dark:text-ink-300">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-500" />
+            <span className="text-sm">Generating personalized tips...</span>
+          </div>
+        ) : triageAdvice?.actionItems?.length > 0 ? (
+          <div className="space-y-3">
+            {triageAdvice.actionItems.map((item, i) => {
+              const IconMap = {
+                alert: AlertTriangle,
+                clock: Clock,
+                heart: Heart,
+                phone: Phone,
+                clipboard: ClipboardList,
+                shield: Shield
+              }
+              const Icon = IconMap[item.icon] || Lightbulb
+              return (
+                <div key={i} className="rounded-xl border border-ink-200 p-4 dark:border-ink-800">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-lg bg-orange-100 p-2 dark:bg-orange-500/20 shrink-0">
+                      <Icon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-ink-900 dark:text-white text-sm">{item.title}</p>
+                      <p className="text-sm text-ink-600 dark:text-ink-300 mt-0.5">{item.description}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : incompleteActionItems.length > 0 ? (
           <div className="space-y-3">
             {incompleteActionItems.slice(0, 5).map((item) => (
-              <div
-                key={item.id}
-                className="rounded-xl border border-ink-200 p-5 dark:border-ink-800"
-              >
+              <div key={item.id} className="rounded-xl border border-ink-200 p-5 dark:border-ink-800">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-3 mb-2">
-                      {item.type === 'doctor-task' ? (
-                        <Stethoscope className="h-5 w-5 text-blue-600" />
-                      ) : (
-                        <Lightbulb className="h-5 w-5 text-purple-600" />
-                      )}
+                      <Lightbulb className="h-5 w-5 text-purple-600" />
                       <h3 className="font-semibold text-ink-900 dark:text-white">
                         {item.title || 'Care Team Update'}
                       </h3>
@@ -311,11 +448,6 @@ const PatientPortal = () => {
                     <p className="text-sm text-ink-600 dark:text-ink-300">
                       {item.message || item.body || 'Check your latest care instructions.'}
                     </p>
-                    {item.createdAt && (
-                      <p className="text-xs text-ink-400 mt-2">
-                        {item.createdAt.toDate().toLocaleDateString()}
-                      </p>
-                    )}
                   </div>
                   <Button variant="outline" size="sm" onClick={() => markAsRead(item.id)}>
                     Mark Complete
@@ -324,7 +456,35 @@ const PatientPortal = () => {
               </div>
             ))}
           </div>
+        ) : (
+          <div className="text-center py-8 text-ink-500 dark:text-ink-300">
+            <Lightbulb className="h-10 w-10 mx-auto mb-3 text-ink-400" />
+            <p className="font-medium">No action items right now</p>
+            <p className="text-sm mt-1">Update your health info to get personalized tips.</p>
+          </div>
         )}
+      </Card>
+
+      {/* Billing Test Dashboard */}
+      <Card className="p-6 border-2 border-green-300 bg-gradient-to-r from-green-50 to-emerald-50 dark:border-green-700 dark:from-green-950/20 dark:to-emerald-950/20">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-green-100 p-3 text-green-600 dark:bg-green-500/20 dark:text-green-200">
+              <DollarSign className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-ink-400 dark:text-ink-500">Flowglad Integration</p>
+              <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-white">Test Unlimited Payments</p>
+              <p className="text-sm text-ink-500 dark:text-ink-300">Trigger real billing events • Unique transaction IDs</p>
+            </div>
+          </div>
+          <Button asChild className="bg-green-600 hover:bg-green-700">
+            <Link to="/patient/billing-test">
+              <CreditCard className="h-4 w-4 mr-2" />
+              Billing Dashboard
+            </Link>
+          </Button>
+        </div>
       </Card>
 
       <Card className="p-6">
@@ -347,7 +507,7 @@ const PatientPortal = () => {
 
         {played && (
           <div className="mt-4 rounded-lg bg-ink-50 p-4 text-sm text-ink-600 dark:bg-ink-900 dark:text-ink-300">
-            "Hello {patient.fullName}, this is a reminder that your appointment has been confirmed. Please arrive 15 minutes early and bring your ID and insurance card."
+            "Hello {patient.fullName}, your ER room has been assigned based on your triage priority. Please proceed to the assigned room and a care team member will assist you shortly."
           </div>
         )}
       </Card>

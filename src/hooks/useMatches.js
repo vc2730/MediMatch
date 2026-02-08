@@ -87,6 +87,26 @@ export const useDoctorMatches = (doctorId) => {
   const [error, setError] = useState(null);
   const batchMapsRef = useRef({});
   const matchUnsubsRef = useRef([]);
+  const directMatchesRef = useRef([]);
+
+  // Merge appointment-based matches and direct doctorId matches, deduplicate by id
+  const mergeAndSet = () => {
+    const apptMatches = Object.values(batchMapsRef.current).flat();
+    const direct = directMatchesRef.current;
+    const seen = new Set();
+    const merged = [];
+    for (const m of [...direct, ...apptMatches]) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        merged.push(m);
+      }
+    }
+    merged.sort((a, b) => {
+      if (!a.matchedAt || !b.matchedAt) return 0;
+      return b.matchedAt.seconds - a.matchedAt.seconds;
+    });
+    setMatches(merged);
+  };
 
   useEffect(() => {
     if (!doctorId) {
@@ -103,12 +123,28 @@ export const useDoctorMatches = (doctorId) => {
       batchMapsRef.current = {};
     };
 
+    // Direct query by doctorId — catches matches from the patient demo flow
+    const directQ = query(collection(db, 'matches'), where('doctorId', '==', doctorId));
+    const unsubDirect = onSnapshot(
+      directQ,
+      (snapshot) => {
+        directMatchesRef.current = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        mergeAndSet();
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        console.warn('Direct doctorId match query error:', err);
+        setLoading(false);
+      }
+    );
+
     const unsubscribeAppointments = subscribeToDoctorAppointments(doctorId, (appointments) => {
       clearMatchListeners();
 
       const appointmentIds = appointments.map((apt) => apt.id);
       if (appointmentIds.length === 0) {
-        setMatches([]);
+        mergeAndSet();
         setLoading(false);
         return;
       }
@@ -128,12 +164,7 @@ export const useDoctorMatches = (doctorId) => {
           q,
           (snapshot) => {
             batchMapsRef.current[index] = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            const merged = Object.values(batchMapsRef.current).flat();
-            merged.sort((a, b) => {
-              if (!a.matchedAt || !b.matchedAt) return 0;
-              return b.matchedAt.seconds - a.matchedAt.seconds;
-            });
-            setMatches(merged);
+            mergeAndSet();
             setLoading(false);
             setError(null);
           },
@@ -149,9 +180,11 @@ export const useDoctorMatches = (doctorId) => {
     });
 
     return () => {
+      unsubDirect();
       unsubscribeAppointments();
       clearMatchListeners();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId]);
 
   const refresh = async () => {

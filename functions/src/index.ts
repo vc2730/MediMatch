@@ -5,6 +5,20 @@ import { buildK2Prompt } from './prompts/k2'
 import { K2Provider } from './providers/k2Provider'
 import { getK2Config } from './config'
 
+// Export workflow automation functions
+export {
+  triggerMatchWorkflow,
+  getWorkflowStatus,
+  workflowWebhook,
+  onMatchCreated
+} from './workflowAutomation'
+
+// Export care coordination functions
+export {
+  generateCoordinationPlan,
+  getCoordinationPlan
+} from './careCoordination'
+
 if (!getApps().length) {
   initializeApp()
 }

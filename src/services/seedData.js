@@ -14,81 +14,93 @@ import { calculateMatchScore } from './matching';
 import { db } from '../firebase/config';
 
 // ============================================
-// DEMO DOCTORS
+// DEMO ER ROOMS / PROVIDERS
 // ============================================
 
 export const DEMO_DOCTORS = [
   {
     id: 'doctor_1',
-    email: 'dr.jones@cityheart.com',
+    email: 'dr.jones@ercentral.com',
     role: 'doctor',
     fullName: 'Dr. Sarah Jones',
     specialty: 'cardiology',
-    clinicName: 'City Heart Center',
+    clinicName: 'City General ER - Cardiac Bay',
     address: '123 Medical Plaza, New York, NY',
     zipCode: '10001',
     phone: '555-0101',
     npiNumber: '1234567890',
     licenseNumber: 'NY123456',
-    insuranceAccepted: ['Medicaid', 'Medicare', 'Private', 'Commercial PPO'],
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Private', 'Commercial PPO', 'Uninsured'],
     languages: ['English', 'Spanish'],
-    bio: 'Board-certified cardiologist with 15 years of experience'
+    bio: 'Emergency cardiologist - Cardiac arrest, MI, arrhythmia',
+    erRoom: 'Trauma Bay 1',
+    erCapacity: 3,
+    avgTreatmentMinutes: 45
   },
   {
     id: 'doctor_2',
-    email: 'dr.smith@communityclinic.com',
+    email: 'dr.smith@ercentral.com',
     role: 'doctor',
     fullName: 'Dr. Michael Smith',
     specialty: 'primary_care',
-    clinicName: 'Community Health Clinic',
+    clinicName: 'City General ER - General Wing',
     address: '456 Main St, Brooklyn, NY',
     zipCode: '11201',
     phone: '555-0102',
     npiNumber: '9876543210',
     licenseNumber: 'NY654321',
-    insuranceAccepted: ['Medicaid', 'Medicare', 'Uninsured'],
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Uninsured', 'Private'],
     languages: ['English', 'Chinese', 'Spanish'],
-    bio: 'Family medicine physician focused on underserved communities'
+    bio: 'General emergency medicine - minor injuries, infections, pain',
+    erRoom: 'Room 4B',
+    erCapacity: 4,
+    avgTreatmentMinutes: 30
   },
   {
     id: 'doctor_3',
-    email: 'dr.patel@orthocenter.com',
+    email: 'dr.patel@ercentral.com',
     role: 'doctor',
     fullName: 'Dr. Priya Patel',
     specialty: 'orthopedics',
-    clinicName: 'Manhattan Orthopedic Center',
+    clinicName: 'City General ER - Trauma Center',
     address: '789 Park Avenue, New York, NY',
     zipCode: '10021',
     phone: '555-0103',
     npiNumber: '5555555555',
     licenseNumber: 'NY789012',
-    insuranceAccepted: ['Medicare', 'Private', 'Commercial PPO'],
+    insuranceAccepted: ['Medicare', 'Private', 'Commercial PPO', 'Uninsured'],
     languages: ['English', 'Hindi', 'Gujarati'],
-    bio: 'Orthopedic surgeon specializing in joint replacement'
+    bio: 'Trauma surgery - fractures, lacerations, orthopedic emergencies',
+    erRoom: 'Trauma Bay 2',
+    erCapacity: 2,
+    avgTreatmentMinutes: 60
   },
   {
     id: 'doctor_4',
-    email: 'dr.chen@neuroclinic.com',
+    email: 'dr.chen@ercentral.com',
     role: 'doctor',
     fullName: 'Dr. James Chen',
     specialty: 'neurology',
-    clinicName: 'Queens Neurology Associates',
+    clinicName: 'Brooklyn Medical ER - Neuro Unit',
     address: '321 Queens Blvd, Queens, NY',
     zipCode: '11375',
     phone: '555-0104',
     npiNumber: '4444444444',
     licenseNumber: 'NY345678',
-    insuranceAccepted: ['Medicaid', 'Medicare', 'Private'],
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Private', 'Uninsured'],
     languages: ['English', 'Mandarin', 'Cantonese'],
-    bio: 'Neurologist with expertise in headache and seizure disorders'
+    bio: 'Neurological emergencies - stroke, seizure, head trauma',
+    erRoom: 'Neuro Suite A',
+    erCapacity: 2,
+    avgTreatmentMinutes: 50
   },
   {
     id: 'doctor_5',
-    email: 'dr.rodriguez@familycare.com',
+    email: 'dr.rodriguez@ercentral.com',
     role: 'doctor',
     fullName: 'Dr. Maria Rodriguez',
     specialty: 'primary_care',
-    clinicName: 'Bronx Family Care',
+    clinicName: 'Bronx Community ER',
     address: '555 Grand Concourse, Bronx, NY',
     zipCode: '10451',
     phone: '555-0105',
@@ -96,7 +108,10 @@ export const DEMO_DOCTORS = [
     licenseNumber: 'NY901234',
     insuranceAccepted: ['Medicaid', 'Medicare', 'Uninsured', 'Private'],
     languages: ['English', 'Spanish', 'Portuguese'],
-    bio: 'Bilingual family physician serving diverse communities'
+    bio: 'Bilingual ER physician - pediatric and adult emergencies',
+    erRoom: 'Room 7',
+    erCapacity: 3,
+    avgTreatmentMinutes: 35
   }
 ];
 
@@ -106,6 +121,7 @@ export const DEMO_DOCTORS = [
 
 export const DEMO_PATIENTS = [
   {
+    // HIGH PRIORITY: Critical cardiac + equity barriers → expected score ~95
     id: 'patient_1',
     email: 'sarah.martinez@email.com',
     role: 'patient',
@@ -114,132 +130,201 @@ export const DEMO_PATIENTS = [
     phone: '555-1001',
     address: '100 First Ave, New York, NY',
     zipCode: '10009',
-    symptoms: 'Chest pain and shortness of breath when climbing stairs',
-    medicalCondition: 'Possible cardiac issue',
-    urgencyLevel: 8,
-    aiUrgencyScore: 8,
+    symptoms: 'Crushing chest pain radiating to left arm, diaphoresis, nausea for 2 hours',
+    medicalCondition: 'Suspected acute myocardial infarction',
+    urgencyLevel: 10,
+    aiUrgencyScore: 10,
+    triageLevel: 1, // ESI Level 1 - Immediate
     specialty: 'cardiology',
+    insurance: 'Medicaid',
+    transportation: 'Limited',
+    language: 'Spanish',
+    income: 'Low',
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 5 * 60 * 1000), // arrived 5 min ago
+    registeredAt: new Date(Date.now() - 5 * 60 * 1000),
+    lastMatchedAt: null,
+    totalMatches: 0
+  },
+  {
+    // HIGH PRIORITY: Stroke symptoms + uninsured → expected score ~88
+    id: 'patient_2',
+    email: 'james.okafor@email.com',
+    role: 'patient',
+    fullName: 'James Okafor',
+    dateOfBirth: new Date('1962-08-11'),
+    phone: '555-1002',
+    address: '210 Flatbush Ave, Brooklyn, NY',
+    zipCode: '11217',
+    symptoms: 'Sudden facial drooping, slurred speech, left arm weakness — onset 45 minutes ago',
+    medicalCondition: 'Acute ischemic stroke (FAST positive)',
+    urgencyLevel: 10,
+    aiUrgencyScore: 10,
+    triageLevel: 1, // ESI Level 1 - Immediate
+    specialty: 'neurology',
+    insurance: 'Uninsured',
+    transportation: 'Ambulance',
+    language: 'English',
+    income: 'Low',
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 8 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 8 * 60 * 1000),
+    lastMatchedAt: null,
+    totalMatches: 0
+  },
+  {
+    // HIGH PRIORITY: Severe trauma + Medicaid → expected score ~82
+    id: 'patient_3',
+    email: 'elena.vasquez@email.com',
+    role: 'patient',
+    fullName: 'Elena Vasquez',
+    dateOfBirth: new Date('1998-03-22'),
+    phone: '555-1003',
+    address: '45 Southern Blvd, Bronx, NY',
+    zipCode: '10451',
+    symptoms: 'Open fracture right tibia from bicycle accident, significant blood loss',
+    medicalCondition: 'Compound leg fracture with hemorrhage',
+    urgencyLevel: 9,
+    aiUrgencyScore: 9,
+    triageLevel: 2, // ESI Level 2 - Emergent
+    specialty: 'orthopedics',
     insurance: 'Medicaid',
     transportation: 'Public transit',
     language: 'Spanish',
     income: 'Low',
-    waitTimeDays: 18,
-    registeredAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000), // 18 days ago
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 12 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 12 * 60 * 1000),
     lastMatchedAt: null,
     totalMatches: 0
   },
   {
-    id: 'patient_2',
-    email: 'john.wilson@email.com',
+    // MID-HIGH: Seizure + language barrier → expected score ~72
+    id: 'patient_4',
+    email: 'wei.zhang@email.com',
     role: 'patient',
-    fullName: 'John Wilson',
-    dateOfBirth: new Date('1950-03-22'),
-    phone: '555-1002',
-    address: '200 Oak Street, Brooklyn, NY',
-    zipCode: '11201',
-    symptoms: 'Persistent cough and fatigue',
-    medicalCondition: 'Chronic respiratory symptoms',
-    urgencyLevel: 5,
-    aiUrgencyScore: 6,
-    specialty: 'primary_care',
+    fullName: 'Wei Zhang',
+    dateOfBirth: new Date('1978-11-30'),
+    phone: '555-1004',
+    address: '88 Mott Street, New York, NY',
+    zipCode: '10013',
+    symptoms: 'First-time seizure, post-ictal state, no previous history, confused',
+    medicalCondition: 'New onset seizure disorder',
+    urgencyLevel: 8,
+    aiUrgencyScore: 8,
+    triageLevel: 2, // ESI Level 2 - Emergent
+    specialty: 'neurology',
     insurance: 'Medicare',
-    transportation: 'Limited',
-    language: 'English',
+    transportation: 'Family driver',
+    language: 'Mandarin',
     income: 'Low',
-    waitTimeDays: 22,
-    registeredAt: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000),
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 20 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 20 * 60 * 1000),
     lastMatchedAt: null,
     totalMatches: 0
   },
   {
-    id: 'patient_3',
-    email: 'lisa.thompson@email.com',
+    // MID: Severe abdominal pain + wait time → expected score ~61
+    id: 'patient_5',
+    email: 'michael.brown@email.com',
     role: 'patient',
-    fullName: 'Lisa Thompson',
-    dateOfBirth: new Date('1975-11-08'),
-    phone: '555-1003',
-    address: '300 Elm Ave, Queens, NY',
-    zipCode: '11375',
-    symptoms: 'Severe headaches and vision problems',
-    medicalCondition: 'Neurological symptoms',
+    fullName: 'Michael Brown',
+    dateOfBirth: new Date('1955-07-04'),
+    phone: '555-1005',
+    address: '312 Atlantic Ave, Brooklyn, NY',
+    zipCode: '11201',
+    symptoms: 'Severe abdominal pain, vomiting, fever 102°F, possible appendicitis',
+    medicalCondition: 'Acute abdomen - rule out appendicitis',
     urgencyLevel: 7,
     aiUrgencyScore: 7,
-    specialty: 'neurology',
-    insurance: 'Uninsured',
-    transportation: 'Bus',
+    triageLevel: 2, // ESI Level 2 - Emergent
+    specialty: 'primary_care',
+    insurance: 'Medicare',
+    transportation: 'Public transit',
     language: 'English',
     income: 'Low',
-    waitTimeDays: 12,
-    registeredAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
+    waitTimeDays: 1,
+    arrivalTime: new Date(Date.now() - 35 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 35 * 60 * 1000),
     lastMatchedAt: null,
     totalMatches: 0
   },
   {
-    id: 'patient_4',
-    email: 'robert.kim@email.com',
+    // MID: Asthma attack + uninsured → expected score ~58
+    id: 'patient_6',
+    email: 'amara.diallo@email.com',
     role: 'patient',
-    fullName: 'Robert Kim',
-    dateOfBirth: new Date('1968-07-30'),
-    phone: '555-1004',
+    fullName: 'Amara Diallo',
+    dateOfBirth: new Date('2005-01-15'),
+    phone: '555-1006',
+    address: '720 Lenox Ave, New York, NY',
+    zipCode: '10039',
+    symptoms: 'Severe asthma attack, O2 sat 88%, not responding to inhaler',
+    medicalCondition: 'Acute asthma exacerbation',
+    urgencyLevel: 7,
+    aiUrgencyScore: 8,
+    triageLevel: 2,
+    specialty: 'primary_care',
+    insurance: 'Uninsured',
+    transportation: 'Public transit',
+    language: 'French',
+    income: 'Low',
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 18 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 18 * 60 * 1000),
+    lastMatchedAt: null,
+    totalMatches: 0
+  },
+  {
+    // MID-LOW: Deep laceration + moderate wait → expected score ~45
+    id: 'patient_7',
+    email: 'david.kim@email.com',
+    role: 'patient',
+    fullName: 'David Kim',
+    dateOfBirth: new Date('1990-05-20'),
+    phone: '555-1007',
     address: '400 Pine Road, New York, NY',
     zipCode: '10021',
-    symptoms: 'Knee pain and difficulty walking',
-    medicalCondition: 'Joint pain',
-    urgencyLevel: 4,
-    aiUrgencyScore: 4,
+    symptoms: '4cm laceration on forearm requiring sutures, controlled bleeding',
+    medicalCondition: 'Laceration requiring sutures',
+    urgencyLevel: 5,
+    aiUrgencyScore: 5,
+    triageLevel: 3, // ESI Level 3 - Urgent
     specialty: 'orthopedics',
     insurance: 'Commercial PPO',
     transportation: 'Personal vehicle',
     language: 'English',
-    income: 'Medium',
-    waitTimeDays: 5,
-    registeredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    income: 'High',
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 45 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 45 * 60 * 1000),
     lastMatchedAt: null,
     totalMatches: 0
   },
   {
-    id: 'patient_5',
-    email: 'maria.garcia@email.com',
+    // LOW: Sprained ankle + good insurance → expected score ~28
+    id: 'patient_8',
+    email: 'jennifer.walsh@email.com',
     role: 'patient',
-    fullName: 'Maria Garcia',
-    dateOfBirth: new Date('1990-02-14'),
-    phone: '555-1005',
-    address: '500 Maple St, Bronx, NY',
-    zipCode: '10451',
-    symptoms: 'High blood pressure and dizziness',
-    medicalCondition: 'Hypertension',
-    urgencyLevel: 6,
-    aiUrgencyScore: 7,
-    specialty: 'primary_care',
-    insurance: 'Medicaid',
-    transportation: 'Community shuttle',
-    language: 'Spanish',
-    income: 'Low',
-    waitTimeDays: 15,
-    registeredAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
-    lastMatchedAt: null,
-    totalMatches: 0
-  },
-  {
-    id: 'patient_6',
-    email: 'david.brown@email.com',
-    role: 'patient',
-    fullName: 'David Brown',
-    dateOfBirth: new Date('1955-09-19'),
-    phone: '555-1006',
-    address: '600 Cedar Lane, Brooklyn, NY',
-    zipCode: '11201',
-    symptoms: 'Chest discomfort and palpitations',
-    medicalCondition: 'Cardiac symptoms',
-    urgencyLevel: 9,
-    aiUrgencyScore: 9,
-    specialty: 'cardiology',
-    insurance: 'Medicare',
-    transportation: 'Family driver',
+    fullName: 'Jennifer Walsh',
+    dateOfBirth: new Date('1995-09-12'),
+    phone: '555-1008',
+    address: '55 W 72nd St, New York, NY',
+    zipCode: '10023',
+    symptoms: 'Twisted ankle while running, mild swelling, can bear weight',
+    medicalCondition: 'Suspected ankle sprain',
+    urgencyLevel: 3,
+    aiUrgencyScore: 2,
+    triageLevel: 4, // ESI Level 4 - Less Urgent
+    specialty: 'orthopedics',
+    insurance: 'Private',
+    transportation: 'Personal vehicle',
     language: 'English',
-    income: 'Medium',
-    waitTimeDays: 3,
-    registeredAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    income: 'High',
+    waitTimeDays: 0,
+    arrivalTime: new Date(Date.now() - 60 * 60 * 1000),
+    registeredAt: new Date(Date.now() - 60 * 60 * 1000),
     lastMatchedAt: null,
     totalMatches: 0
   }
@@ -250,46 +335,44 @@ export const DEMO_PATIENTS = [
 // ============================================
 
 /**
- * Generate appointment slots for the next N days
- * @param {Object} doctor - Doctor data
- * @param {number} daysAhead - Number of days to generate
- * @returns {Array} Array of appointment objects
+ * Generate ER room availability slots
+ * @param {Object} doctor - ER provider/room data
+ * @param {number} slots - Number of availability slots to generate
+ * @returns {Array} Array of ER room slot objects
  */
-const generateAppointmentsForDoctor = (doctor, daysAhead = 14) => {
+const generateAppointmentsForDoctor = (doctor, slots = 8) => {
   const appointments = [];
-  const times = ['9:00 AM', '10:00 AM', '11:00 AM', '2:00 PM', '3:00 PM', '4:00 PM'];
+  const now = new Date();
 
-  for (let day = 1; day <= daysAhead; day++) {
-    // Skip weekends
-    const date = new Date();
-    date.setDate(date.getDate() + day);
-    const dayOfWeek = date.getDay();
+  for (let i = 0; i < slots; i++) {
+    // Generate slots spread over the next few hours
+    const slotTime = new Date(now.getTime() + i * 15 * 60 * 1000); // 15-min intervals
+    const estimatedWaitMinutes = i * 15;
 
-    if (dayOfWeek === 0 || dayOfWeek === 6) continue; // Skip Sunday (0) and Saturday (6)
-
-    // Generate 3-5 random slots per day
-    const slotsPerDay = Math.floor(Math.random() * 3) + 3;
-    const shuffledTimes = times.sort(() => 0.5 - Math.random());
-
-    for (let i = 0; i < slotsPerDay; i++) {
-      appointments.push({
-        doctorId: doctor.id,
-        doctorName: doctor.fullName,
-        clinicName: doctor.clinicName,
-        specialty: doctor.specialty,
-        date: Timestamp.fromDate(date),
-        time: shuffledTimes[i],
-        duration: 30,
-        address: doctor.address,
-        zipCode: doctor.zipCode,
-        city: 'New York',
-        state: 'NY',
-        insuranceAccepted: doctor.insuranceAccepted,
-        languagesOffered: doctor.languages,
-        wheelchairAccessible: Math.random() > 0.3, // 70% wheelchair accessible
-        publicTransitNearby: Math.random() > 0.2 // 80% near public transit
-      });
-    }
+    appointments.push({
+      doctorId: doctor.id,
+      doctorName: doctor.fullName,
+      clinicName: doctor.clinicName,
+      specialty: doctor.specialty,
+      date: Timestamp.fromDate(slotTime),
+      time: slotTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      duration: doctor.avgTreatmentMinutes || 30,
+      address: doctor.address,
+      zipCode: doctor.zipCode,
+      city: 'New York',
+      state: 'NY',
+      insuranceAccepted: doctor.insuranceAccepted,
+      languagesOffered: doctor.languages,
+      wheelchairAccessible: true, // ER rooms are always accessible
+      publicTransitNearby: Math.random() > 0.2,
+      erRoom: doctor.erRoom,
+      estimatedWaitMinutes,
+      roomType: doctor.specialty === 'cardiology' ? 'Cardiac Bay' :
+                doctor.specialty === 'neurology' ? 'Neuro Suite' :
+                doctor.specialty === 'orthopedics' ? 'Trauma Bay' : 'General ER Room',
+      currentCapacity: Math.floor(Math.random() * doctor.erCapacity),
+      maxCapacity: doctor.erCapacity
+    });
   }
 
   return appointments;
@@ -342,17 +425,17 @@ export const seedPatients = async () => {
 };
 
 /**
- * Seed appointments into Firestore
- * @param {number} daysAhead - Days to generate appointments for
- * @returns {Promise<Array>} Array of created appointment IDs
+ * Seed ER room availability slots into Firestore
+ * @param {number} slotsPerRoom - Number of slots to generate per ER room
+ * @returns {Promise<Array>} Array of created slot IDs
  */
-export const seedAppointments = async (daysAhead = 14) => {
-  console.log('📅 Seeding appointments...');
+export const seedAppointments = async (slotsPerRoom = 8) => {
+  console.log('🏥 Seeding ER room availability...');
 
   const createdAppointments = [];
 
   for (const doctor of DEMO_DOCTORS) {
-    const appointments = generateAppointmentsForDoctor(doctor, daysAhead);
+    const appointments = generateAppointmentsForDoctor(doctor, slotsPerRoom);
 
     for (const appointment of appointments) {
       try {
@@ -388,8 +471,8 @@ export const seedAllDemoData = async () => {
     await seedPatients();
     console.log('');
 
-    // Seed appointments
-    const appointmentIds = await seedAppointments(14);
+    // Seed ER room availability slots
+    const appointmentIds = await seedAppointments(8);
     console.log('');
 
     const endTime = Date.now();

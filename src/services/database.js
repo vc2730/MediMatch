@@ -250,10 +250,21 @@ export const getAllAvailableAppointments = async (startDate = new Date(), limitC
       limit(limitCount)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    if (results.length === 0) {
+      console.log('⚠️ No appointments in Firestore, using demo ER rooms');
+      const { getAllDemoAppointments } = await import('./demoAppointments');
+      return getAllDemoAppointments(limitCount);
+    }
+    return results;
   } catch (error) {
-    console.error('Error fetching all available appointments:', error);
-    throw error;
+    console.error('Error fetching all available appointments, using demo fallback:', error);
+    try {
+      const { getAllDemoAppointments } = await import('./demoAppointments');
+      return getAllDemoAppointments(limitCount);
+    } catch {
+      return [];
+    }
   }
 };
 
@@ -350,7 +361,6 @@ export const getAppointmentById = async (appointmentId) => {
  */
 export const createMatch = async (patientId, appointmentId, scores) => {
   try {
-    const batch = writeBatch(db);
     const matchRef = doc(collection(db, 'matches'));
     const timestamp = Timestamp.now();
 
@@ -370,26 +380,15 @@ export const createMatch = async (patientId, appointmentId, scores) => {
       updatedAt: timestamp
     };
 
-    batch.set(matchRef, match);
+    await setDoc(matchRef, match);
 
-    // Update appointment status
+    // Best-effort: update appointment + patient (non-critical, use set merge to avoid "not found" errors)
     const appointmentRef = doc(db, 'appointments', appointmentId);
-    batch.update(appointmentRef, {
-      status: 'matched',
-      patientId,
-      matchedAt: timestamp,
-      updatedAt: timestamp
-    });
+    setDoc(appointmentRef, { status: 'matched', patientId, matchedAt: timestamp, updatedAt: timestamp }, { merge: true }).catch(() => {});
 
-    // Update patient's last matched time
     const patientRef = doc(db, 'users', patientId);
-    batch.update(patientRef, {
-      lastMatchedAt: timestamp,
-      totalMatches: increment(1),
-      updatedAt: timestamp
-    });
+    setDoc(patientRef, { lastMatchedAt: timestamp, updatedAt: timestamp }, { merge: true }).catch(() => {});
 
-    await batch.commit();
     console.log('Match created:', matchRef.id);
     return matchRef.id;
   } catch (error) {

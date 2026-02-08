@@ -1,4 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
+/**
+ * @deprecated This file is no longer used. Use /src/contexts/AuthContext.jsx instead.
+ * This is kept for reference only and should not be imported.
+ */
 import React, { createContext, useContext, useMemo, useState } from 'react'
 
 const AuthContext = createContext({ user: null, login: () => {}, logout: () => {} })

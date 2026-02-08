@@ -117,7 +117,7 @@ export const usePatients = (useDemoFallback = true) => {
 };
 
 /**
- * Get single patient with real-time updates
+ * Get single patient with real-time updates + demo data fallback
  */
 export const usePatient = (patientId) => {
   const [patient, setPatient] = useState(null);
@@ -133,9 +133,23 @@ export const usePatient = (patientId) => {
 
     setLoading(true);
 
-    // Subscribe to real-time updates
+    // Subscribe to real-time updates, with demo data fallback
     const unsubscribe = subscribeToUserProfile(patientId, (data) => {
-      setPatient(data);
+      if (data) {
+        setPatient(data);
+      } else {
+        // Fall back to demo data if Firestore has no record
+        const demoPatient = DEMO_PATIENTS.find(p => p.id === patientId);
+        if (demoPatient) {
+          setPatient({
+            ...demoPatient,
+            registeredAt: { toDate: () => demoPatient.registeredAt },
+            dateOfBirth: { toDate: () => demoPatient.dateOfBirth }
+          });
+        } else {
+          setPatient(null);
+        }
+      }
       setLoading(false);
       setError(null);
     });

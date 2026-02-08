@@ -1,62 +1,106 @@
 /**
- * Demo Appointments Generator
- * Creates local appointments if Firestore is empty
+ * Demo ER Room Availability
+ * Creates local ER room slots if Firestore is empty
  */
 
 import { Timestamp } from 'firebase/firestore';
 
-const DEMO_DOCTORS = [
-  { id: 'doctor_1', name: 'Dr. Sarah Jones', specialty: 'cardiology', clinic: 'City Heart Center', zip: '10001' },
-  { id: 'doctor_2', name: 'Dr. Michael Smith', specialty: 'primary_care', clinic: 'Community Health Clinic', zip: '11201' },
-  { id: 'doctor_3', name: 'Dr. Priya Patel', specialty: 'orthopedics', clinic: 'Manhattan Orthopedic Center', zip: '10021' },
-  { id: 'doctor_4', name: 'Dr. James Chen', specialty: 'neurology', clinic: 'Queens Neurology Associates', zip: '11375' }
+const DEMO_ER_ROOMS = [
+  {
+    id: 'doctor_1',
+    name: 'Dr. Sarah Jones',
+    specialty: 'cardiology',
+    clinic: 'City General ER - Cardiac Bay',
+    address: '123 Medical Plaza, New York, NY 10001',
+    zip: '10001',
+    erRoom: 'Trauma Bay 1',
+    avgTreatmentMinutes: 45,
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Private', 'Commercial PPO', 'Uninsured']
+  },
+  {
+    id: 'doctor_2',
+    name: 'Dr. Michael Smith',
+    specialty: 'primary_care',
+    clinic: 'City General ER - General Wing',
+    address: '456 Main St, Brooklyn, NY 11201',
+    zip: '11201',
+    erRoom: 'Room 4B',
+    avgTreatmentMinutes: 30,
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Uninsured', 'Private']
+  },
+  {
+    id: 'doctor_3',
+    name: 'Dr. Priya Patel',
+    specialty: 'orthopedics',
+    clinic: 'City General ER - Trauma Center',
+    address: '789 Park Avenue, New York, NY 10021',
+    zip: '10021',
+    erRoom: 'Trauma Bay 2',
+    avgTreatmentMinutes: 60,
+    insuranceAccepted: ['Medicare', 'Private', 'Commercial PPO', 'Uninsured']
+  },
+  {
+    id: 'doctor_4',
+    name: 'Dr. James Chen',
+    specialty: 'neurology',
+    clinic: 'Brooklyn Medical ER - Neuro Unit',
+    address: '321 Queens Blvd, Queens, NY 11375',
+    zip: '11375',
+    erRoom: 'Neuro Suite A',
+    avgTreatmentMinutes: 50,
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Private', 'Uninsured']
+  },
+  {
+    id: 'doctor_5',
+    name: 'Dr. Maria Rodriguez',
+    specialty: 'primary_care',
+    clinic: 'Bronx Community ER',
+    address: '555 Grand Concourse, Bronx, NY 10451',
+    zip: '10451',
+    erRoom: 'Room 7',
+    avgTreatmentMinutes: 35,
+    insuranceAccepted: ['Medicaid', 'Medicare', 'Uninsured', 'Private']
+  }
 ];
 
-const TIMES = ['9:00 AM', '10:00 AM', '11:00 AM', '2:00 PM', '3:00 PM', '4:00 PM'];
-
 /**
- * Generate demo appointments for the next N days
+ * Generate ER room availability slots
  */
-export const generateDemoAppointments = (daysAhead = 14) => {
+export const generateDemoAppointments = (slotsPerRoom = 6) => {
   const appointments = [];
   let idCounter = 1;
+  const now = new Date();
 
-  DEMO_DOCTORS.forEach(doctor => {
-    for (let day = 1; day <= daysAhead; day++) {
-      const date = new Date();
-      date.setDate(date.getDate() + day);
-      const dayOfWeek = date.getDay();
+  DEMO_ER_ROOMS.forEach(room => {
+    for (let i = 0; i < slotsPerRoom; i++) {
+      const slotTime = new Date(now.getTime() + i * 20 * 60 * 1000); // 20-min intervals
+      const estimatedWaitMinutes = i * 20;
 
-      // Skip weekends
-      if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-
-      // Generate 2-3 slots per day per doctor
-      const slotsPerDay = Math.floor(Math.random() * 2) + 2;
-
-      for (let i = 0; i < slotsPerDay; i++) {
-        const time = TIMES[Math.floor(Math.random() * TIMES.length)];
-
-        appointments.push({
-          id: `demo_appt_${idCounter++}`,
-          doctorId: doctor.id,
-          doctorName: doctor.name,
-          specialty: doctor.specialty,
-          clinicName: doctor.clinic,
-          date: Timestamp.fromDate(date),
-          time: time,
-          duration: 30,
-          status: 'available',
-          patientId: null,
-          insuranceAccepted: ['Medicaid', 'Medicare', 'Private'],
-          address: `${doctor.clinic}, NY`,
-          zipCode: doctor.zip,
-          city: 'New York',
-          state: 'NY',
-          wheelchairAccessible: Math.random() > 0.3,
-          publicTransitNearby: Math.random() > 0.2,
-          languagesOffered: ['English']
-        });
-      }
+      appointments.push({
+        id: `demo_appt_${idCounter++}`,
+        doctorId: room.id,
+        doctorName: room.name,
+        specialty: room.specialty,
+        clinicName: room.clinic,
+        address: room.address,
+        date: Timestamp.fromDate(slotTime),
+        time: slotTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        duration: room.avgTreatmentMinutes,
+        status: 'available',
+        patientId: null,
+        insuranceAccepted: room.insuranceAccepted,
+        zipCode: room.zip,
+        city: 'New York',
+        state: 'NY',
+        wheelchairAccessible: true,
+        publicTransitNearby: true,
+        languagesOffered: ['English', 'Spanish'],
+        erRoom: room.erRoom,
+        estimatedWaitMinutes,
+        roomType: room.specialty === 'cardiology' ? 'Cardiac Bay' :
+                  room.specialty === 'neurology' ? 'Neuro Suite' :
+                  room.specialty === 'orthopedics' ? 'Trauma Bay' : 'General ER Room'
+      });
     }
   });
 
@@ -64,19 +108,18 @@ export const generateDemoAppointments = (daysAhead = 14) => {
 };
 
 /**
- * Get demo appointments by specialty
+ * Get demo ER room slots by specialty
  */
 export const getDemoAppointmentsBySpecialty = (specialty, limit = 50) => {
-  const allAppointments = generateDemoAppointments();
-  return allAppointments
-    .filter(apt => apt.specialty === specialty)
+  const allSlots = generateDemoAppointments();
+  return allSlots
+    .filter(slot => slot.specialty === specialty)
     .slice(0, limit);
 };
 
 /**
- * Get all demo appointments
+ * Get all demo ER room slots
  */
 export const getAllDemoAppointments = (limit = 100) => {
-  const allAppointments = generateDemoAppointments();
-  return allAppointments.slice(0, limit);
+  return generateDemoAppointments().slice(0, limit);
 };

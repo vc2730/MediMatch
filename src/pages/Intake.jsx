@@ -162,6 +162,9 @@ Valid specialties are: ${SPECIALTIES.join(', ')}.`
       if (uploadedPhoto) {
         const base64Image = await convertImageToBase64(uploadedPhoto)
         const mimeType = uploadedPhoto.type || 'image/jpeg'
+        // Store for Dedalus multimodal care coordination
+        sessionStorage.setItem('symptomImageBase64', base64Image)
+        sessionStorage.setItem('symptomImageMime', mimeType)
         parts.push({
           inline_data: {
             mime_type: mimeType,
@@ -199,9 +202,11 @@ Valid specialties are: ${SPECIALTIES.join(', ')}.`
         urgency: String(analysis.urgencyLevel || prev.urgency),
         specialty: normalizedSpecialty
       }))
+      return analysis
     } catch (error) {
       console.error('Error analyzing with Gemini:', error)
       setAiError('Error getting AI analysis. Please try again.')
+      return null
     } finally {
       setAnalyzing(false)
     }
@@ -212,6 +217,19 @@ Valid specialties are: ${SPECIALTIES.join(', ')}.`
     setSubmitting(true)
 
     try {
+      // Auto-run Gemini analysis if condition + symptoms filled but not yet analyzed
+      let freshAnalysis = aiAnalysis
+      if (!freshAnalysis && formData.condition && formData.symptoms) {
+        freshAnalysis = await analyzeWithGemini()
+      }
+
+      // Store symptom image for Dedalus multimodal coordination if not already stored
+      if (uploadedPhoto && !sessionStorage.getItem('symptomImageBase64')) {
+        const base64Image = await convertImageToBase64(uploadedPhoto)
+        sessionStorage.setItem('symptomImageBase64', base64Image)
+        sessionStorage.setItem('symptomImageMime', uploadedPhoto.type || 'image/jpeg')
+      }
+
       const patientId = isPatient && user?.uid ? user.uid : `patient_${Date.now()}`
 
       // Calculate wait time days (starts at 0)
@@ -227,9 +245,9 @@ Valid specialties are: ${SPECIALTIES.join(', ')}.`
         // Medical info
         medicalCondition: formData.condition,
         symptoms: formData.symptoms,
-        urgencyLevel: parseInt(formData.urgency),
-        specialty: formData.specialty,
-        aiReasoning: aiAnalysis?.reasoning || null,
+        urgencyLevel: freshAnalysis?.urgencyLevel ? parseInt(freshAnalysis.urgencyLevel) : parseInt(formData.urgency),
+        specialty: freshAnalysis?.specialty || formData.specialty,
+        aiReasoning: freshAnalysis?.reasoning || null,
 
         // Demographic & equity info
         zipCode: formData.zip,
